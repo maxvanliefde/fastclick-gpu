@@ -77,6 +77,9 @@
 /* Define if you have the HW Flow API. */
 #undef HAVE_FLOW_API
 
+/* Define if you have the CUDA support enabled. */
+#undef HAVE_CUDA
+
 /* Define if you have the ffs function. */
 #undef HAVE_FFS
 

@@ -650,6 +650,10 @@ ac_header_cxx_list=
 ac_func_c_list=
 ac_subst_vars='LTLIBOBJS
 provisions
+CUDA_LIBS
+CUDA_INCLUDES
+NVCC
+USE_CUDA
 clickbuild_clickdir
 clickbuild_sbindir
 clickbuild_libdir
@@ -908,6 +912,7 @@ enable_test
 enable_threads
 enable_tunnel
 enable_wifi
+enable_cuda
 enable_experimental
 enable_skip_elements
 with_freebsd
@@ -1661,6 +1666,7 @@ Optional Features:
   --disable-threads       do not include thread management elements
   --enable-tunnel         include tunnelling elements
   --enable-wifi           include wifi elements and support
+  --enable-cuda           include CUDA elements and support
   --enable-experimental   enable experimental elements in normal groups
   --enable-skip-elements=ELTS
                           disable comma-separated elements
@@ -9009,6 +9015,18 @@ else $as_nop
 fi
 test "x$enable_all_elements" = xyes -a \( "x$enable_wifi" = xNO -o "x$enable_wifi" = x \) && enable_wifi=yes
 if test "x$enable_wifi" = xyes; then
+    :
+
+fi
+# Check whether --enable-cuda was given.
+if test ${enable_cuda+y}
+then :
+  enableval=$enable_cuda;
+else $as_nop
+  enable_cuda=NO
+fi
+test "x$enable_all_elements" = xyes -a \( "x$enable_cuda" = xNO -o "x$enable_cuda" = x \) && enable_cuda=yes
+if test "x$enable_cuda" = xyes; then
     :
 
 fi
@@ -19108,7 +19126,7 @@ else
 
     have_llvm=yes
     LLVM_OBJS="llvmutils.o $LLVM_OBJS"
-    LIBS_LLVM="`$LLVMCONFIG --ldflags --system-libs --libs all | tr '\n' ' ' ` $LIBS_LLVM"
+    LIBS_LLVM="`$LLVMCONFIG --ldflags --system-libs --libs all | tr -d '\n'` $LIBS_LLVM"
     INCLUDES_LLVM="`$LLVMCONFIG --cxxflags | tr -d '\n'` $INCLUDES_LLVM"
 fi
 
@@ -19459,6 +19477,130 @@ fi
 if test "x$enable_wifi" = xyes; then
     provisions="$provisions wifi"
 fi
+
+if test "x$enable_cuda" = xyes; then
+    provisions="$provisions cuda"
+    printf "%s\n" "#define HAVE_CUDA 1" >>confdefs.h
+
+    USE_CUDA=yes
+
+    if test -n "$ac_tool_prefix"; then
+  # Extract the first word of "${ac_tool_prefix}nvcc", so it can be a program name with args.
+set dummy ${ac_tool_prefix}nvcc; ac_word=$2
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
+printf %s "checking for $ac_word... " >&6; }
+if test ${ac_cv_prog_NVCC+y}
+then :
+  printf %s "(cached) " >&6
+else $as_nop
+  if test -n "$NVCC"; then
+  ac_cv_prog_NVCC="$NVCC" # Let the user override the test.
+else
+as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  case $as_dir in #(((
+    '') as_dir=./ ;;
+    */) ;;
+    *) as_dir=$as_dir/ ;;
+  esac
+    for ac_exec_ext in '' $ac_executable_extensions; do
+  if as_fn_executable_p "$as_dir$ac_word$ac_exec_ext"; then
+    ac_cv_prog_NVCC="${ac_tool_prefix}nvcc"
+    printf "%s\n" "$as_me:${as_lineno-$LINENO}: found $as_dir$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+  done
+IFS=$as_save_IFS
+
+fi
+fi
+NVCC=$ac_cv_prog_NVCC
+if test -n "$NVCC"; then
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $NVCC" >&5
+printf "%s\n" "$NVCC" >&6; }
+else
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
+printf "%s\n" "no" >&6; }
+fi
+
+
+fi
+if test -z "$ac_cv_prog_NVCC"; then
+  ac_ct_NVCC=$NVCC
+  # Extract the first word of "nvcc", so it can be a program name with args.
+set dummy nvcc; ac_word=$2
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
+printf %s "checking for $ac_word... " >&6; }
+if test ${ac_cv_prog_ac_ct_NVCC+y}
+then :
+  printf %s "(cached) " >&6
+else $as_nop
+  if test -n "$ac_ct_NVCC"; then
+  ac_cv_prog_ac_ct_NVCC="$ac_ct_NVCC" # Let the user override the test.
+else
+as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  case $as_dir in #(((
+    '') as_dir=./ ;;
+    */) ;;
+    *) as_dir=$as_dir/ ;;
+  esac
+    for ac_exec_ext in '' $ac_executable_extensions; do
+  if as_fn_executable_p "$as_dir$ac_word$ac_exec_ext"; then
+    ac_cv_prog_ac_ct_NVCC="nvcc"
+    printf "%s\n" "$as_me:${as_lineno-$LINENO}: found $as_dir$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+  done
+IFS=$as_save_IFS
+
+fi
+fi
+ac_ct_NVCC=$ac_cv_prog_ac_ct_NVCC
+if test -n "$ac_ct_NVCC"; then
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $ac_ct_NVCC" >&5
+printf "%s\n" "$ac_ct_NVCC" >&6; }
+else
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
+printf "%s\n" "no" >&6; }
+fi
+
+  if test "x$ac_ct_NVCC" = x; then
+    NVCC="notfound"
+  else
+    case $cross_compiling:$ac_tool_warned in
+yes:)
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: WARNING: using cross tools not prefixed with host triplet" >&5
+printf "%s\n" "$as_me: WARNING: using cross tools not prefixed with host triplet" >&2;}
+ac_tool_warned=yes ;;
+esac
+    NVCC=$ac_ct_NVCC
+  fi
+else
+  NVCC="$ac_cv_prog_NVCC"
+fi
+
+    if test "x$NVCC" = xnotfound; then
+        as_fn_error $? "
+        =========================================
+
+        --enable-cuda requires the nvcc compiler which was not found in PATH.
+        Consider giving the path to nvcc with NVCC=/path/to/nvcc.
+
+        =========================================" "$LINENO" 5
+    fi
+    CUDA_INCLUDES=-I/usr/local/cuda/include
+
+    CUDA_LIBS="-lcuda -lcudart -L/usr/local/cuda/lib64"
+
+fi
+
 
 
 
@@ -20857,6 +20999,9 @@ Configuration Summary:
     DPDK   support:              ${dpdk_info}
 
     RSS++  support:              ${enable_rsspp}
+
+    CUDA   support:              ${enable_cuda}
+    NVCC   Compiler:             ${NVCC}
 
     Netmap support:              ${HAVE_NETMAP}
     PCAP   support:              ${have_pcap}

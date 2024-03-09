@@ -18,6 +18,7 @@ VPATH = .:$(top_srcdir)/lib:$(top_srcdir)/vendor/tinyexpr:$(top_srcdir)/vendor/n
 CC = @CC@
 CPP = @CPP@
 CXX = @CXX@
+NVCC = @NVCC@
 CXXCPP = @CXXCPP@
 DEPCFLAGS = @DEPCFLAGS@
 AR_CREATE = @AR@ @AR_CREATEFLAGS@
@@ -34,6 +35,7 @@ ccompile = $(COMPILE) $(DEPCFLAGS) $(1)
 ccompile_nodep = $(COMPILE) $(1)
 cxxcompile = $(CXXCOMPILE) $(DEPCFLAGS) $(1)
 cxxcompile_nodep = $(CXXCOMPILE) $(1)
+nvcccompile = $(NVCCCOMPILE) $(DEPCFLAGS) $(1)
 cxxlink = $(CXXLINK) $(1)
 x_verbose_cmd = $(1) $(3)
 verbose_cmd = $(1) $(3)
@@ -42,13 +44,14 @@ ccompile = @/bin/echo ' ' $(2) $< && $(COMPILE) $(DEPCFLAGS) $(1)
 ccompile_nodep = @/bin/echo ' ' $(2) $< && $(COMPILE) $(1)
 cxxcompile = @/bin/echo ' ' $(2) $< && $(CXXCOMPILE) $(DEPCFLAGS) $(1)
 cxxcompile_nodep = @/bin/echo ' ' $(2) $< && $(CXXCOMPILE) $(1)
+nvcccompile = @/bin/echo ' ' $(2) $< && $(NVCCCOMPILE) $(DEPCFLAGS) $(1)
 cxxlink = @/bin/echo ' ' $(2) $@ && $(CXXLINK) $(1)
 x_verbose_cmd = $(if $(2),/bin/echo ' ' $(2) $(3) &&,) $(1) $(3)
 verbose_cmd = @$(x_verbose_cmd)
 endif
 
 .SUFFIXES:
-.SUFFIXES: .S .c .cc .o .s .ii
+.SUFFIXES: .S .c .cc .o .s .ii .cu
 
 .c.o:
 	$(call ccompile,-c $< -o $@,CC)
@@ -62,6 +65,8 @@ endif
 	$(call cxxcompile_nodep,-S $< -o $@,CXX -S)
 .cc.ii:
 	$(call cxxcompile_nodep,-E $< > $@,CXXCPP)
+.cu.o:
+	$(call nvcccompile,-c $< -o $@,NVCC)
 
 llvmutils.o: llvmutils.cc
 	$(call cxxcompile,-c $< $(INCLUDES_LLVM) -o $@,CXX)
@@ -107,9 +112,9 @@ CXXFLAGS = @CXXFLAGS@
 DEFS = @DEFS@
 INCLUDES = -I$(top_builddir)/include -I$(top_builddir)/vendor -I$(top_srcdir)/include \
 	-I$(srcdir) -I$(top_srcdir) \
-	@PROPER_INCLUDES@ @PCAP_INCLUDES@ @DPDK_INCLUDES@ @NETMAP_INCLUDES@ @NUMA_INCLUDES@
+	@PROPER_INCLUDES@ @PCAP_INCLUDES@ @DPDK_INCLUDES@ @NETMAP_INCLUDES@ @NUMA_INCLUDES@ @CUDA_INCLUDES@
 LDFLAGS = @LDFLAGS@
-LIBS = @LIBS@ `$(CLICK_BUILDTOOL) --otherlibs` $(ELEMENT_LIBS)
+LIBS = @LIBS@ @CUDA_LIBS@ `$(CLICK_BUILDTOOL) --otherlibs` $(ELEMENT_LIBS)
 LIBS_IR = @LIBS@ `$(CLICK_BUILDTOOL) --irlibs` $(ELEMENT_LIBS)
 LIBS_LLVM = @LIBS_LLVM@
 INCLUDES_LLVM= @INCLUDES_LLVM@
@@ -119,6 +124,7 @@ CXXCOMPILE = $(CXX) $(DEFS) $(INCLUDES) $(CPPFLAGS) $(CXXFLAGS)
 CXXLD = $(CXX)
 CXXLINK = $(CXXLD) $(CXXFLAGS) $(LDFLAGS) -o $@
 COMPILE = $(CC) $(DEFS) $(INCLUDES) $(CPPFLAGS) $(CFLAGS)
+NVCCCOMPILE = $(NVCC) $(DEFS) $(INCLUDES) $(CPPFLAGS)
 CCLD = $(CC)
 LINK = $(CCLD) $(CFLAGS) $(LDFLAGS) -o $@
 
@@ -179,6 +185,15 @@ ifeq ($(USE_DPDK),yes)
 	EXTRA_DRIVER_OBJS := dpdkdevice.o $(EXTRA_DRIVER_OBJS)
 endif
 
+USE_CUDA = @USE_CUDA@
+ifeq ($(USE_CUDA),yes)
+	CUDA_PATH = $(top_srcdir)/lib/cuda
+	VPATH += :${CUDA_PATH}
+	CUDA_SOURCES = $(wildcard $(CUDA_PATH)/*.cu)
+	CUDA_OBJECTS = $(notdir $(CUDA_SOURCES:.cu=.o))
+	GENERIC_OBJS += $(CUDA_OBJECTS)
+	DEFS += -DHAVE_CUDA
+endif
 
 
 ifneq ($(ELEMENT_CHECKSUM),)

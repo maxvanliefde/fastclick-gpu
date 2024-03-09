@@ -699,6 +699,7 @@ ELEMENTS_ARG_ENABLE(test, [include regression test elements], yes)
 ELEMENTS_ARG_ENABLE(threads, [include thread management elements], yes)
 ELEMENTS_ARG_ENABLE(tunnel, [include tunnelling elements], NO)
 ELEMENTS_ARG_ENABLE(wifi, [include wifi elements and support], NO)
+ELEMENTS_ARG_ENABLE(cuda, [include CUDA elements and support], NO)
 AC_ARG_ENABLE(experimental, [AS_HELP_STRING([--enable-experimental], [enable experimental elements in normal groups])], :, enable_experimental=no)
 AC_ARG_ENABLE(skip-elements, [AS_HELP_STRING([--enable-skip-elements=ELTS], [disable comma-separated elements])], :, enable_skip_elements=no)
 
@@ -2866,6 +2867,26 @@ if test "x$enable_wifi" = xyes; then
     provisions="$provisions wifi"
 fi
 
+dnl add 'cuda' if cuda elements are available
+if test "x$enable_cuda" = xyes; then
+    provisions="$provisions cuda"
+    AC_DEFINE(HAVE_CUDA)
+    AC_SUBST(USE_CUDA, yes)
+    AC_CHECK_TOOL(NVCC, nvcc, notfound)
+    if test "x$NVCC" = xnotfound; then
+        AC_MSG_ERROR([
+        =========================================
+
+        --enable-cuda requires the nvcc compiler which was not found in PATH.
+        Consider giving the path to nvcc with NVCC=/path/to/nvcc.
+
+        =========================================])
+    fi
+    AC_SUBST(CUDA_INCLUDES, -I/usr/local/cuda/include)
+    AC_SUBST(CUDA_LIBS, "-lcuda -lcudart -L/usr/local/cuda/lib64")
+fi
+
+
 AC_SUBST(provisions)
 
 dnl
@@ -2933,6 +2954,9 @@ Configuration Summary:
     DPDK   support:              ${dpdk_info}
 
     RSS++  support:              ${enable_rsspp}
+
+    CUDA   support:              ${enable_cuda}
+    NVCC   Compiler:             ${NVCC}
 
     Netmap support:              ${HAVE_NETMAP}
     PCAP   support:              ${have_pcap}
