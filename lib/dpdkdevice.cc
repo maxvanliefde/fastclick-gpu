@@ -26,6 +26,7 @@
 #include <click/userutils.hh>
 #include <rte_errno.h>
 #include <click/dpdk_glue.hh>
+#include <rte_gpudev.h>
 
 #if CLICK_PACKET_USE_DPDK
 #define DPDK_ANNO_SIZE sizeof(Packet::AllAnno)
@@ -380,6 +381,11 @@ int DPDKDevice::alloc_pktmbufs(ErrorHandler* errh)
     }
 #endif
 
+    struct rte_eth_dev_info dev_info;
+    memset(&dev_info, 0, sizeof(rte_eth_dev_info));
+    rte_eth_dev_info_get(0, &dev_info);
+    // TODO is it correct to do this?
+
     if (rte_eal_process_type() == RTE_PROC_PRIMARY) {
         // Create a pktmbuf pool for each active socket
         for (unsigned i = 0; i < _nr_pktmbuf_pools; i++) {
@@ -390,22 +396,47 @@ int DPDKDevice::alloc_pktmbufs(ErrorHandler* errh)
 
                         String mempool_name = DPDKDevice::MEMPOOL_PREFIX + String(i);
                         const char* name = mempool_name.c_str();
-                        _pktmbuf_pools[i] =
+#ifndef HAVE_CUDA
 #if RTE_VERSION >= RTE_VERSION_NUM(2,2,0,0)
-                        rte_pktmbuf_pool_create(name, get_nb_mbuf(i),
+                        _pktmbuf_pools[i] = rte_pktmbuf_pool_create(name, get_nb_mbuf(i),
                                                 MBUF_CACHE_SIZE, DPDK_ANNO_SIZE, MBUF_DATA_SIZE, i);
 #else
-                        rte_mempool_create(
+                        _pktmbuf_pools[i] = rte_mempool_create(
                                         name, get_nb_mbuf(i), MBUF_SIZE, MBUF_CACHE_SIZE,
                                         sizeof (struct rte_pktmbuf_pool_private),
                                         rte_pktmbuf_pool_init, NULL, rte_pktmbuf_init, NULL,
                                         i, 0);
 #endif
+#else
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+                        rte_pktmbuf_extmem mem;
+                        mem.elt_size = MBUF_DATA_SIZE;
+                        mem.buf_len = get_nb_mbuf(i) * mem.elt_size;
+                        mem.buf_iova = RTE_BAD_IOVA;
+                        mem.buf_ptr = rte_malloc("extmem", mem.buf_len, 0);
+                        if (mem.buf_ptr == NULL) {
+                            errh->error("Could not allocate CPU memory for DPDK");
+                            return rte_errno;
+                        }
+                        // todo gpu device not 0
+                        if (rte_gpu_mem_register(0, mem.buf_len, mem.buf_ptr) < 0) {
+                            errh->error("Could not gpudev register the memory");
+                            return rte_errno;
+                        }
+                        if (rte_dev_dma_map(dev_info.device, mem.buf_ptr, mem.buf_iova, mem.buf_len)) {
+                            errh->error("Could not map the memory");
+                            return rte_errno;
+                        }
 
+                        _pktmbuf_pools[i] = rte_pktmbuf_pool_create_extbuf(name, get_nb_mbuf(i),
+                                                MBUF_CACHE_SIZE, DPDK_ANNO_SIZE, MBUF_DATA_SIZE, i,
+                                                &mem, 1);
+#endif
                         if (!_pktmbuf_pools[i]) {
                                 errh->error("Could not allocate packet MBuf pools %d with %d buffers : error %d (%s)",i, get_nb_mbuf(i), rte_errno,rte_strerror(rte_errno));
                                 return rte_errno;
                         }
+                        //printf("allocated memory i= %d ptr= %p buf_ptr = %p\n", i, _pktmbuf_pools[i], mem.buf_ptr);
                 }
         }
     } else {
@@ -1192,6 +1223,7 @@ int DPDKDevice::add_tx_queue(unsigned &queue_id, unsigned n_desc, ErrorHandler *
 }
 
 int DPDKDevice::static_initialize(ErrorHandler* errh) {
+
 #if HAVE_DPDK_PACKET_POOL
     if (!dpdk_enabled) {
         return errh->error("You must start Click with --dpdk option when compiling with --enable-dpdk-pool");
