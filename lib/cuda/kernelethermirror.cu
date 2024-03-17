@@ -75,8 +75,8 @@ __global__ void kernel_ether_mirror(struct rte_gpu_comm_list *comm_list, uint32_
     }
 }
 
-void wrapper_ether_mirror(struct rte_gpu_comm_list *comm_list, uint32_t comm_list_size, int cuda_blocks, int cuda_threads) {
-    kernel_ether_mirror <<< cuda_blocks, cuda_threads >>> (comm_list, comm_list_size);
+void wrapper_ether_mirror(struct rte_gpu_comm_list *comm_list, uint32_t comm_list_size, int cuda_blocks, int cuda_threads, cudaStream_t stream) {
+    kernel_ether_mirror <<< cuda_blocks, cuda_threads, 0, stream >>> (comm_list, comm_list_size);
 }
 
 #endif /* HAVE_CUDA */
