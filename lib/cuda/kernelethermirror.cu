@@ -31,7 +31,8 @@ __global__ void kernel_ether_mirror(struct rte_gpu_comm_list *comm_list, uint32_
             }
         }
 
-        __syncthreads();
+        __syncthreads();        // ensures all threads in the thread block have reached this point and all memory accesses made are visible to all threads in the block. 
+        __threadfence_system(); // ensures seeing the writes made by the CPU before
 
         if (wait_status_shared != RTE_GPU_COMM_LIST_READY) break;
 
@@ -67,7 +68,7 @@ __global__ void kernel_ether_mirror(struct rte_gpu_comm_list *comm_list, uint32_
 
         if (idx == 0) {
             RTE_GPU_VOLATILE(*comm_list[i].status_d) = RTE_GPU_COMM_LIST_DONE;
-            __threadfence_system();
+            __threadfence_system(); // ensures writes are seen by the CPU
         }
 
         i = (i+1) % comm_list_size;

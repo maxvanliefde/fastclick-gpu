@@ -7,7 +7,7 @@ CLICK_DECLS
 #define MAX_BURSTS_X_QUEUE 4096
 
 
-class GPUEtherMirror : public SimpleBatchElement<GPUEtherMirror> { 
+class GPUEtherMirror : public BatchElement { 
 public:
 
     GPUEtherMirror() CLICK_COLD {};
@@ -18,17 +18,19 @@ public:
 
 
 #if HAVE_BATCH
-    PacketBatch *simple_action_batch(PacketBatch *);
+    // PacketBatch *simple_action_batch(PacketBatch *)
+    bool run_task(Task *);
+    void push_batch(int port, PacketBatch *head);
 #endif
 
     // int configure(Vector<String> &, ErrorHandler *) override CLICK_COLD;
     int initialize(ErrorHandler *) override CLICK_COLD;
     void cleanup(CleanupStage) override CLICK_COLD;
-    // bool run_task(Task *);
 
     struct rte_gpu_comm_list *_comm_list;
     uint32_t _comm_list_size;
-    uint32_t _comm_list_curr_index;
+    uint32_t _comm_list_put_index, _comm_list_get_index;
+    Task *_task;
 
 };
 
