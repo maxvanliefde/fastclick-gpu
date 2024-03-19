@@ -47,7 +47,7 @@ void GPUEtherMirror::push_batch(int port, PacketBatch *batch) {
 
     int i = 0;
     FOR_EACH_PACKET(batch, p)
-        array[i++] = p->uniqueify()->mb();
+        array[i++] = p->mb();
     
     int ret = rte_gpu_comm_get_status(&_state->comm_list[_state->comm_list_put_index], &status);
     if (ret != 0) {
@@ -88,7 +88,6 @@ bool GPUEtherMirror::run_task(Task *task) {
     n = _state->comm_list[_state->comm_list_get_index].num_pkts;
     pkts = _state->comm_list[_state->comm_list_get_index].mbufs;
     for (uint32_t i = 0; i < n; i++) {
-        unsigned char *data = rte_pktmbuf_mtod(pkts[i], unsigned char *);
         packet = static_cast<WritablePacket *>(Packet::make(pkts[i]));
         if (head == NULL) 
             head = PacketBatch::start_head(packet);
