@@ -7,9 +7,6 @@
 
 CLICK_DECLS
 
-#define MAX_BURSTS_X_QUEUE 4096
-
-
 class GPUEtherMirror : public BatchElement { 
 public:
 
@@ -17,6 +14,8 @@ public:
 
     const char *class_name() const              { return "GPUEtherMirror"; }
     const char *port_count() const              { return PORTS_1_1; }
+    const char *flow_code()  const override     { return COMPLETE_FLOW;} 
+    const char *processing() const              { return PUSH;}
 
 #if HAVE_BATCH
     bool run_task(Task *);
@@ -25,6 +24,7 @@ public:
     // int configure(Vector<String> &, ErrorHandler *) override CLICK_COLD;
     int initialize(ErrorHandler *) override CLICK_COLD;
     void cleanup(CleanupStage) override CLICK_COLD;
+    bool get_spawning_threads(Bitvector&, bool, int);
 
 protected:
     struct state {

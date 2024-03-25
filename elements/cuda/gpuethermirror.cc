@@ -76,9 +76,11 @@ bool GPUEtherMirror::run_task(Task *task) {
     uint32_t n;
     struct rte_mbuf **pkts;
 
-    do {
-        rte_gpu_comm_get_status(&_state->comm_list[_state->comm_list_get_index], &status);
-    } while (status != RTE_GPU_COMM_LIST_DONE);
+    rte_gpu_comm_get_status(&_state->comm_list[_state->comm_list_get_index], &status);
+    if (status != RTE_GPU_COMM_LIST_DONE) {
+        task->fast_reschedule();
+        return false;
+    }
 
     rte_rmb();
 
@@ -107,6 +109,11 @@ bool GPUEtherMirror::run_task(Task *task) {
 }
 
 #endif
+
+bool GPUEtherMirror::get_spawning_threads(Bitvector& bmp, bool isoutput, int port) {
+    return true;
+}
+
 
 // todo fix, close cuda kernels and destroy streams
 void GPUEtherMirror::cleanup(CleanupStage) {
