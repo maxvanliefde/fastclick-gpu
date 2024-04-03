@@ -411,7 +411,7 @@ int DPDKDevice::alloc_pktmbufs(ErrorHandler* errh)
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
                         rte_pktmbuf_extmem mem;
                         mem.elt_size = MBUF_DATA_SIZE;
-                        mem.buf_len = get_nb_mbuf(i) * mem.elt_size;
+                        mem.buf_len = ((size_t) get_nb_mbuf(i)) * mem.elt_size;
                         mem.buf_iova = RTE_BAD_IOVA;
                         mem.buf_ptr = rte_malloc("extmem", mem.buf_len, 0);
                         if (mem.buf_ptr == NULL) {
@@ -436,7 +436,6 @@ int DPDKDevice::alloc_pktmbufs(ErrorHandler* errh)
                                 errh->error("Could not allocate packet MBuf pools %d with %d buffers : error %d (%s)",i, get_nb_mbuf(i), rte_errno,rte_strerror(rte_errno));
                                 return rte_errno;
                         }
-                        //printf("allocated memory i= %d ptr= %p buf_ptr = %p\n", i, _pktmbuf_pools[i], mem.buf_ptr);
                 }
         }
     } else {
