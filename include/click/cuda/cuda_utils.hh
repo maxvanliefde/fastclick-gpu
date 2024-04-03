@@ -12,7 +12,7 @@
     do {                                                                    \
         cudaError_t result = (stmt);                                        \
         if(cudaSuccess != result) {                                         \
-            return errh->error("[%s:%d] cuda failed with %s \n",            \
+            errh->error("[%s:%d] cuda failed with %s \n",            \
                    __FILE__, __LINE__, cudaGetErrorString(result));         \
         }                                                                   \
     } while(0)
