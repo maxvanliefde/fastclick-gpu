@@ -35,6 +35,7 @@ protected:
         cudaStream_t cuda_stream;
     };
     per_thread<state> _state;
+    Bitvector _usable_threads;
 };
 
 CLICK_ENDDECLS

@@ -11,8 +11,12 @@ CLICK_DECLS
 GPUEtherMirror::GPUEtherMirror() : _state() {};
 
 int GPUEtherMirror::initialize(ErrorHandler *errh) {
-    printf("Initializing with %d threads\n", master()->nthreads());
+    _usable_threads = get_pushing_threads();
+
     for (int th_id = 0; th_id < master()->nthreads(); th_id++) {
+        if (!_usable_threads[th_id])
+            continue;
+
         state &s = _state.get_value(th_id);
         s.comm_list_put_index = 0;
         s.comm_list_get_index = 0;
@@ -56,19 +60,22 @@ void GPUEtherMirror::push_batch(int port, PacketBatch *batch) {
     }
 
     if (status != RTE_GPU_COMM_LIST_FREE) {
-        errh->error("List is not free! GPU processing is likely too slow\n");
+        errh->error("List is not free! GPU processing is likely too slow, or the list is too small\n");
+        batch->kill();
         return;
     }
     
     ret = rte_gpu_comm_populate_list_pkts(&_state->comm_list[_state->comm_list_put_index], array, n);     // includes call to gpu_wmb
     if (ret != 0) {
         errh->error("rte_gpu_comm_populate_list_pkts returned error %d (size was %d )\n", ret, n);
+        batch->kill();
         return;
     }
     rte_wmb();
 
     _state->comm_list_put_index = (_state->comm_list_put_index + 1) % _state->comm_list_size;
-    _state->task->reschedule();
+    if (!_state->task->scheduled())
+        _state->task->reschedule();
 }
 
 bool GPUEtherMirror::run_task(Task *task) {
@@ -104,7 +111,14 @@ bool GPUEtherMirror::run_task(Task *task) {
 
     rte_gpu_comm_cleanup_list(&_state->comm_list[_state->comm_list_get_index]);
     rte_mb();
+
     _state->comm_list_get_index = (_state->comm_list_get_index + 1) % _state->comm_list_size;
+
+    // maybe multiple pushes have been made before this task was fired
+    if (_state->comm_list_put_index != _state->comm_list_get_index) {
+        task->fast_reschedule();
+    }
+
     return true;
 }
 
@@ -115,9 +129,36 @@ bool GPUEtherMirror::get_spawning_threads(Bitvector& bmp, bool isoutput, int por
 }
 
 
-// todo fix, close cuda kernels and destroy streams
+/* Cleans all structures */
 void GPUEtherMirror::cleanup(CleanupStage) {
-    rte_gpu_comm_destroy_list(_state->comm_list, _state->comm_list_size);
+    ErrorHandler *errh = ErrorHandler::default_handler();
+
+    for (int i = 0; i < _state.weight(); i++) {
+        if (!_usable_threads[i])
+            continue;
+
+        state &s = _state.get_value(i);
+
+        /* Finish all the tasks polling on the GPU communication list */
+        delete s.task;
+        s.task = nullptr;
+
+        /* Terminating CUDA kernels */
+        int ret;
+        for (int index = 0; index < s.comm_list_size; index++) {
+            ret = rte_gpu_comm_set_status(&s.comm_list[index], RTE_GPU_COMM_LIST_ERROR);
+            if (ret != 0) {
+                errh->error(
+                    "Can't set status RTE_GPU_COMM_LIST_ERROR on item %d for thread i."
+                    "This probably means that the GPU kernel associated will never finish!", index, i);
+            }
+        }
+        CUDA_CHECK(cudaStreamSynchronize(s.cuda_stream), errh);
+
+        /* Destroy the stream and the communication list */
+        cudaStreamDestroy(s.cuda_stream);
+        // rte_gpu_comm_destroy_list(s.comm_list, s.comm_list_size);    // does not work
+    }
 }
 
 ELEMENT_REQUIRES(batch cuda)
