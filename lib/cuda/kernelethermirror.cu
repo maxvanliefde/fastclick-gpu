@@ -6,8 +6,8 @@
 #ifdef HAVE_CUDA
 
 __global__ void kernel_ether_mirror(struct rte_gpu_comm_list *comm_list, uint32_t comm_list_size) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    uint32_t i = 0;
+    int pkt_id = threadIdx.x;
+    uint32_t item_id = blockIdx.x;
 
     struct rte_ether_hdr *eth;
     uint8_t *src, *dst, tmp[6];
@@ -20,9 +20,9 @@ __global__ void kernel_ether_mirror(struct rte_gpu_comm_list *comm_list, uint32_
 
     for(;;) {
         /* check status of current batch */
-        if (idx == 0) {
+        if (pkt_id == 0) {
             while(1) {
-                wait_status = RTE_GPU_VOLATILE(*comm_list[i].status_d);
+                wait_status = RTE_GPU_VOLATILE(*comm_list[item_id].status_d);
                 if (wait_status != RTE_GPU_COMM_LIST_FREE) {
                     wait_status_shared = wait_status;
                     __threadfence_block();
@@ -37,9 +37,9 @@ __global__ void kernel_ether_mirror(struct rte_gpu_comm_list *comm_list, uint32_
         if (wait_status_shared != RTE_GPU_COMM_LIST_READY) break;
 
         /* Workload */
-        if (idx < comm_list[i].num_pkts && comm_list[i].pkt_list[idx].addr != NULL) {
-            eth = (struct rte_ether_hdr *)(((uint8_t *) (comm_list[i].pkt_list[idx].addr)));
-            size = comm_list[i].pkt_list[idx].size;
+        if (pkt_id < comm_list[item_id].num_pkts && comm_list[item_id].pkt_list[pkt_id].addr != NULL) {
+            eth = (struct rte_ether_hdr *)(((uint8_t *) (comm_list[item_id].pkt_list[pkt_id].addr)));
+            size = comm_list[item_id].pkt_list[pkt_id].size;
             src = (uint8_t *) (&eth->src_addr);
             dst = (uint8_t *) (&eth->dst_addr);
 
@@ -66,12 +66,12 @@ __global__ void kernel_ether_mirror(struct rte_gpu_comm_list *comm_list, uint32_
         __threadfence();
         __syncthreads();
 
-        if (idx == 0) {
-            RTE_GPU_VOLATILE(*comm_list[i].status_d) = RTE_GPU_COMM_LIST_DONE;
+        if (pkt_id == 0) {
+            RTE_GPU_VOLATILE(*comm_list[item_id].status_d) = RTE_GPU_COMM_LIST_DONE;
             __threadfence_system(); // ensures writes are seen by the CPU
         }
 
-        i = (i+1) % comm_list_size;
+        item_id = (item_id + gridDim.x) % comm_list_size;
     }
 }
 
