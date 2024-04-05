@@ -2,13 +2,34 @@
 #include <click/cuda/kernelethermirror.hh>
 #include <click/cuda/cuda_utils.hh>
 #include <click/standard/scheduleinfo.hh>
+#include <click/args.hh>
 
 #include "gpuethermirror.hh"
 
 CLICK_DECLS
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 
-GPUEtherMirror::GPUEtherMirror() : _state() {};
+GPUEtherMirror::GPUEtherMirror() : _state(), _capacity(4096), _max_batch(1024), _blocks_per_q(1), _block(false), _verbose(false) {};
+
+int GPUEtherMirror::configure(Vector<String> &conf, ErrorHandler *errh) {
+    if (Args(conf, this, errh)
+        .read_p("CAPACITY", _capacity)
+        .read_p("MAX_BATCH", _max_batch)
+        .read_p("THREAD_BLOCKS_PER_QUEUE", _blocks_per_q)
+        .read_p("BLOCKING", _block)
+        .read("VERBOSE", _verbose)
+        .complete() < 0) 
+    {
+        return -1;
+    }
+
+    if (_max_batch > RTE_GPU_COMM_LIST_PKTS_MAX) {
+        errh->error("Given MAX_BATCH = %d but the maximum is %d", RTE_GPU_COMM_LIST_PKTS_MAX);
+        return -1;
+    }
+
+    return 0;
+}
 
 int GPUEtherMirror::initialize(ErrorHandler *errh) {
     _usable_threads = get_pushing_threads();
@@ -20,7 +41,7 @@ int GPUEtherMirror::initialize(ErrorHandler *errh) {
         state &s = _state.get_value(th_id);
         s.comm_list_put_index = 0;
         s.comm_list_get_index = 0;
-        s.comm_list_size = MAX_BURSTS_X_QUEUE;
+        s.comm_list_size = _capacity;
         s.comm_list = rte_gpu_comm_create_list(0, s.comm_list_size);   // todo generify GPU
         if (s.comm_list == NULL)  {
             return errh->error("Unable to create the GPU communication list for thread %d", th_id);
@@ -29,12 +50,27 @@ int GPUEtherMirror::initialize(ErrorHandler *errh) {
         s.task = new Task(this);
         ScheduleInfo::initialize_task(this, s.task, false, errh);
         s.task->move_thread(th_id);
+
+        s.timer = new Timer(this);
+        s.timer->initialize(this);
+        s.timer->move_thread(th_id);
+        s.timer->schedule_now();
         
         cudaError_t cuda_ret = cudaStreamCreate(&s.cuda_stream);
         CUDA_CHECK(cuda_ret, errh);
-        wrapper_ether_mirror(s.comm_list, s.comm_list_size, 1, 1024, s.cuda_stream);  // todo generify cuda blocks & threads
+        wrapper_ether_mirror(s.comm_list, s.comm_list_size, _blocks_per_q, _max_batch, s.cuda_stream);
         CUDA_CHECK(cudaGetLastError(), errh);
     }
+
+    if (_verbose) {
+        errh->message("%s{element}: %d usable threads, %d queue per thread, %d batch per queue."
+            "Be sure your mempool can hold at least %d batches, unless you may suffer a loss of performance",
+            this,
+            _usable_threads.weight(), 1, _capacity,
+            _usable_threads.weight() * 1 * _capacity
+        );
+    }
+
 
     return 0;
 }
@@ -45,25 +81,49 @@ int GPUEtherMirror::initialize(ErrorHandler *errh) {
 void GPUEtherMirror::push_batch(int port, PacketBatch *batch) {
     ErrorHandler *errh = ErrorHandler::default_handler();
     enum rte_gpu_comm_list_status status;
+    int ret;
 
     unsigned n = batch->count();
+
+    if (unlikely(n > _max_batch)) {
+        PacketBatch* todrop;
+        batch->split(_max_batch, todrop, true);
+        todrop->kill();
+        if (unlikely(_verbose)) 
+            click_chatter("%p{element} Warning: a batch of size %d has been given, but the max size is %d. "
+            "Dropped %d packets", this, n, _max_batch, n-_max_batch);
+        n = batch->count();
+    }
+
     rte_mbuf *array[n];
 
     int i = 0;
     FOR_EACH_PACKET(batch, p)
         array[i++] = p->mb();
     
-    int ret = rte_gpu_comm_get_status(&_state->comm_list[_state->comm_list_put_index], &status);
-    if (ret != 0) {
-        errh->error("rte_gpu_comm_get_status returned error %d\n", ret);
-        return;
-    }
+    do {
+        ret = rte_gpu_comm_get_status(&_state->comm_list[_state->comm_list_put_index], &status);
+        if (ret != 0) {
+            errh->error("rte_gpu_comm_get_status returned error %d\n", ret);
+            return;
+        }
 
-    if (status != RTE_GPU_COMM_LIST_FREE) {
-        errh->error("List is not free! GPU processing is likely too slow, or the list is too small\n");
-        batch->kill();
-        return;
-    }
+        if (status != RTE_GPU_COMM_LIST_FREE) {
+            if (_block) {
+                _state->task->reschedule();
+                if (unlikely(_verbose))
+                    click_chatter("%p{element} Congestion: List is not free!" 
+                        "GPU processing is likely too slow, or the list is too small, consider increasing CAPACITY", this);
+            } else {
+                batch->kill();
+                if (unlikely(_verbose))
+                    click_chatter("%p{element} Dropped %d packets: List is not free!" 
+                        "GPU processing is likely too slow, or the list is too small, consider increasing CAPACITY", this, n);
+
+                return;
+            }
+        }
+    } while(unlikely(status != RTE_GPU_COMM_LIST_FREE));
     
     ret = rte_gpu_comm_populate_list_pkts(&_state->comm_list[_state->comm_list_put_index], array, n);     // includes call to gpu_wmb
     if (ret != 0) {
@@ -120,6 +180,11 @@ bool GPUEtherMirror::run_task(Task *task) {
     }
 
     return true;
+}
+
+void GPUEtherMirror::run_timer(Timer *timer) {
+    _state->task->reschedule();
+    timer->schedule_now();
 }
 
 #endif
