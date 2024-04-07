@@ -4,9 +4,6 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 
-/* Max number of items in the GPU communication list */
-#define MAX_BURSTS_X_QUEUE 4096
-
 // inspired from nv-l2fwd
 #define CUDA_CHECK(stmt, errh)                                              \
     do {                                                                    \
