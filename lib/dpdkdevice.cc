@@ -415,16 +415,16 @@ int DPDKDevice::alloc_pktmbufs(ErrorHandler* errh)
                         mem.buf_iova = RTE_BAD_IOVA;
                         mem.buf_ptr = rte_malloc("extmem", mem.buf_len, 0);
                         if (mem.buf_ptr == NULL) {
-                            errh->error("Could not allocate CPU memory for DPDK");
+                            errh->error("Could not allocate CPU memory for DPDK: %s", rte_strerror(rte_errno));
                             return rte_errno;
                         }
                         // todo gpu device not 0
                         if (rte_gpu_mem_register(0, mem.buf_len, mem.buf_ptr) < 0) {
-                            errh->error("Could not gpudev register the memory");
+                            errh->error("Could not gpudev register the memory: %s", rte_strerror(rte_errno));
                             return rte_errno;
                         }
                         if (rte_dev_dma_map(dev_info.device, mem.buf_ptr, mem.buf_iova, mem.buf_len)) {
-                            errh->error("Could not map the memory");
+                            errh->error("Could not map the memory: %s", rte_strerror(rte_errno));
                             return rte_errno;
                         }
 
