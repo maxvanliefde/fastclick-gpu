@@ -5,7 +5,57 @@
 
 #ifdef HAVE_CUDA
 
-__global__ void kernel_ether_mirror(struct rte_gpu_comm_list *comm_list, uint32_t comm_list_size) {
+__global__ void kernel_ether_mirror(struct rte_gpu_comm_list *comm_list_item) {
+    int pkt_id = threadIdx.x;
+
+    struct rte_ether_hdr *eth;
+    uint8_t *src, *dst, tmp[6];
+    size_t size;
+
+    /* Workload */
+    if (pkt_id < comm_list_item[0].num_pkts && comm_list_item[0].pkt_list[pkt_id].addr != NULL) {
+        eth = (struct rte_ether_hdr *)(((uint8_t *) (comm_list_item[0].pkt_list[pkt_id].addr)));
+        size = comm_list_item[0].pkt_list[pkt_id].size;
+        src = (uint8_t *) (&eth->src_addr);
+        dst = (uint8_t *) (&eth->dst_addr);
+
+
+        /* Verify source and dest of ethernet addresses */
+        // printf("Before Swap, Size: %lu, Source: %02x:%02x:%02x:%02x:%02x:%02x Dest: %02x:%02x:%02x:%02x:%02x:%02x\n",
+        //     size,
+        //     src[0], src[1], src[2], src[3], src[4], src[5], 
+        //     dst[0], dst[1], dst[2], dst[3], dst[4], dst[5]);
+
+        /* Swap addresses */
+        uint8_t j;
+        for (j = 0; j < 6; j++) tmp[j] = src[j];
+        for (j = 0; j < 6; j++) src[j] = dst[j];
+        for (j = 0; j < 6; j++) dst[j] = tmp[j];
+
+        /* Verify source and dest of ethernet addresses */
+        // printf("After Swap, Source: %02x:%02x:%02x:%02x:%02x:%02x Dest: %02x:%02x:%02x:%02x:%02x:%02x\n",
+        //     src[0], src[1], src[2], src[3], src[4], src[5], 
+        //     dst[0], dst[1], dst[2], dst[3], dst[4], dst[5]);
+    }
+
+    /* Finish batch */
+    __threadfence();
+    __syncthreads();
+
+    if (pkt_id == 0) {
+        RTE_GPU_VOLATILE(*comm_list_item[0].status_d) = RTE_GPU_COMM_LIST_DONE;
+        __threadfence_system(); // ensures writes are seen by the CPU
+    }
+
+    __syncthreads();
+}
+
+void wrapper_ether_mirror(struct rte_gpu_comm_list *comm_list_item, int cuda_threads) {
+    kernel_ether_mirror <<< 1, cuda_threads >>> (comm_list_item);
+}
+
+
+__global__ void kernel_ether_mirror_persistent(struct rte_gpu_comm_list *comm_list, uint32_t comm_list_size) {
     int pkt_id = threadIdx.x;
     uint32_t item_id = blockIdx.x;
 
@@ -75,8 +125,8 @@ __global__ void kernel_ether_mirror(struct rte_gpu_comm_list *comm_list, uint32_
     }
 }
 
-void wrapper_ether_mirror(struct rte_gpu_comm_list *comm_list, uint32_t comm_list_size, int cuda_blocks, int cuda_threads, cudaStream_t stream) {
-    kernel_ether_mirror <<< cuda_blocks, cuda_threads, 0, stream >>> (comm_list, comm_list_size);
+void wrapper_ether_mirror_persistent(struct rte_gpu_comm_list *comm_list, uint32_t comm_list_size, int cuda_blocks, int cuda_threads, cudaStream_t stream) {
+    kernel_ether_mirror_persistent <<< cuda_blocks, cuda_threads, 0, stream >>> (comm_list, comm_list_size);
 }
 
 #endif /* HAVE_CUDA */

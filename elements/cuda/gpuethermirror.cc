@@ -24,7 +24,7 @@ int GPUEtherMirror::configure(Vector<String> &conf, ErrorHandler *errh) {
     }
 
     if (_max_batch > RTE_GPU_COMM_LIST_PKTS_MAX) {
-        errh->error("Given MAX_BATCH = %d but the maximum is %d", RTE_GPU_COMM_LIST_PKTS_MAX);
+        errh->error("Given MAX_BATCH = %d but the maximum is %d", _max_batch, RTE_GPU_COMM_LIST_PKTS_MAX);
         return -1;
     }
 
@@ -58,7 +58,7 @@ int GPUEtherMirror::initialize(ErrorHandler *errh) {
         
         cudaError_t cuda_ret = cudaStreamCreate(&s.cuda_stream);
         CUDA_CHECK(cuda_ret, errh);
-        wrapper_ether_mirror(s.comm_list, s.comm_list_size, _blocks_per_q, _max_batch, s.cuda_stream);
+        wrapper_ether_mirror_persistent(s.comm_list, s.comm_list_size, _blocks_per_q, _max_batch, s.cuda_stream);
         CUDA_CHECK(cudaGetLastError(), errh);
     }
 
