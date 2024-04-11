@@ -173,12 +173,6 @@ bool GPUEtherMirror::run_task(Task *task) {
     rte_mb();
 
     _state->comm_list_get_index = (_state->comm_list_get_index + 1) % _state->comm_list_size;
-
-    // maybe multiple pushes have been made before this task was fired
-    if (_state->comm_list_put_index != _state->comm_list_get_index) {
-        task->fast_reschedule();
-    }
-
     return true;
 }
 
