@@ -99,7 +99,7 @@ void GPUEtherMirror::push_batch(int port, PacketBatch *batch) {
 
     int i = 0;
     FOR_EACH_PACKET(batch, p)
-        array[i++] = p->mb();
+        array[i++] = reinterpret_cast<struct rte_mbuf *>(p);
     
     do {
         ret = rte_gpu_comm_get_status(&_state->comm_list[_state->comm_list_put_index], &status);
