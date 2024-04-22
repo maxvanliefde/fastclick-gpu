@@ -15,7 +15,7 @@ int GPUEtherMirror::configure(Vector<String> &conf, ErrorHandler *errh) {
         return -1;
 
     if (Args(conf, this, errh)
-        .consume() < 0)
+        .complete() < 0)
         return -1;
 
     return 0;
