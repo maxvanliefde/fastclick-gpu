@@ -64,10 +64,13 @@ int GPUElement::initialize_base(ErrorHandler *errh, base_wrapper_persistent_kern
     }
 
     if (_verbose) {
-        errh->message("%s{element}: %d usable threads, %d queue per thread, %d batch per queue.",
+        click_chatter("%p{element}: %d usable threads, %d queue per thread, %d batch per queue.",
             this,
             _usable_threads.weight(), 1, _capacity
         );
+        for (int th_id = 0; th_id < master()->nthreads(); th_id++)
+            if (_usable_threads[th_id])
+                click_chatter("%p{element}: Pipeline in thread %d", this, th_id);
     }
 
     return 0;
