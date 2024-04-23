@@ -30,7 +30,7 @@ public:
 
 protected:
     struct state {
-        char *memory;
+        char *h_memory, *d_memory;
         Task *task;
         Timer *timer;
         uint32_t put_index, get_index;
@@ -49,6 +49,7 @@ protected:
     uint8_t _log_max_batch;
     bool _block;
     bool _verbose;
+    bool _zc;
     int _cuda_threads, _cuda_blocks;
 };
 

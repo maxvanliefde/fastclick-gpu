@@ -10,7 +10,7 @@
 CLICK_DECLS
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 
-GPUElementWithCopy::GPUElementWithCopy() : _state(), _capacity(4096), _max_batch(1024), _block(false), _verbose(false) {};
+GPUElementWithCopy::GPUElementWithCopy() : _state(), _capacity(4096), _max_batch(1024), _block(false), _verbose(false), _zc(true) {};
 
 int GPUElementWithCopy::configure_base(Vector<String> &conf, ErrorHandler *errh) {
     if (Args(conf, this, errh)
@@ -21,6 +21,7 @@ int GPUElementWithCopy::configure_base(Vector<String> &conf, ErrorHandler *errh)
         .read_p("MAX_BATCH", _max_batch)
         .read_p("BLOCKING", _block)
         .read("VERBOSE", _verbose)
+        .read_p("ZEROCOPY", _zc)
         .consume() < 0) 
     {
         return -1;
@@ -76,11 +77,21 @@ int GPUElementWithCopy::initialize_base(ErrorHandler *errh) {
         s.timer->initialize(this);
         s.timer->move_thread(th_id);
         s.timer->schedule_now();
-        
+
         cudaError_t cuda_ret = cudaStreamCreate(&s.cuda_stream);
         CUDA_CHECK_RET(cuda_ret, errh);
-        cuda_ret = cudaHostAlloc(&s.memory, size_per_thread, cudaHostAllocMapped);
-        CUDA_CHECK_RET(cuda_ret, errh);
+
+        if (_zc) {
+            // Under Unified Virtual Addressing, host and device pointers are the same. 
+            cuda_ret = cudaHostAlloc((void **) &s.h_memory, size_per_thread, cudaHostAllocMapped);
+            CUDA_CHECK_RET(cuda_ret, errh);
+            s.d_memory = s.h_memory;
+        } else {
+            cuda_ret = cudaHostAlloc(&s.h_memory, size_per_thread, cudaHostAllocDefault);
+            CUDA_CHECK_RET(cuda_ret, errh);
+            cuda_ret = cudaMalloc((void **) &s.d_memory, size_per_thread);
+            CUDA_CHECK_RET(cuda_ret, errh);
+        }
 
         s.put_index = 0;
         s.get_index = 0;
@@ -124,8 +135,8 @@ void GPUElementWithCopy::push_batch(int port, PacketBatch *batch) {
         n = batch->count();
     }
 
-    char *batch_memory = _state->memory + (_state->put_index << _log_max_batch);
-    char *loop_ptr = batch_memory;
+    char *h_batch_memory = _state->h_memory + (_state->put_index << _log_max_batch);
+    char *loop_ptr = h_batch_memory;
 
     FOR_EACH_PACKET(batch, p) {
         const unsigned char *data = p->data();
@@ -133,35 +144,35 @@ void GPUElementWithCopy::push_batch(int port, PacketBatch *batch) {
         loop_ptr += _stride;
     }
 
-    do {
-        ret = cudaEventQuery(_state->events[_state->put_index]);
-        if (unlikely(ret != cudaSuccess && ret != cudaErrorNotReady)) {
-            errh->error("cudaEventQuery returned error %d\n", ret);
+    while (unlikely(_state->batches[_state->put_index] != nullptr)) {
+        if (_block) {
+            // TODO fix blocking mode, it never switches to the task 
+            _state->task->reschedule();
+            if (unlikely(_verbose))
+                click_chatter("%p{element} Congestion: List is not free!" 
+                    "GPU processing is likely too slow, or the list is too small, consider increasing CAPACITY", this);
+        } else {
             batch->kill();
+            if (unlikely(_verbose))
+                click_chatter("%p{element} Dropped %d packets: List is not free!" 
+                    "GPU processing is likely too slow, or the list is too small, consider increasing CAPACITY", this, n);
             return;
         }
-
-        if (unlikely(ret != cudaSuccess)) {
-            if (_block) {
-                _state->task->reschedule();
-                if (unlikely(_verbose))
-                    click_chatter("%p{element} Congestion: List is not free!" 
-                        "GPU processing is likely too slow, or the list is too small, consider increasing CAPACITY", this);
-            } else {
-                batch->kill();
-                if (unlikely(_verbose))
-                    click_chatter("%p{element} Dropped %d packets: List is not free!" 
-                        "GPU processing is likely too slow, or the list is too small, consider increasing CAPACITY", this, n);
-
-                return;
-            }
-        }
-    } while(unlikely(ret != cudaSuccess));
+    }
 
     _state->batches[_state->put_index] = batch;
 
-    wrapper_ether_mirror(batch_memory, n, _cuda_blocks, _cuda_threads, _state->cuda_stream);
-    cudaEventRecord(_state->events[_state->put_index], _state->cuda_stream);
+    if (_zc) {
+        wrapper_ether_mirror(h_batch_memory, n, _cuda_blocks, _cuda_threads, _state->cuda_stream);
+        cudaEventRecord(_state->events[_state->put_index], _state->cuda_stream);
+    } else {
+        char *d_batch_memory = _state->d_memory + (_state->put_index << _log_max_batch);
+        size_t size = loop_ptr - h_batch_memory;
+        cudaMemcpyAsync(d_batch_memory, h_batch_memory, size, cudaMemcpyHostToDevice, _state->cuda_stream);
+        wrapper_ether_mirror(d_batch_memory, n, _cuda_blocks, _cuda_threads, _state->cuda_stream);
+        cudaMemcpyAsync(h_batch_memory, d_batch_memory, size, cudaMemcpyDeviceToHost, _state->cuda_stream);
+        cudaEventRecord(_state->events[_state->put_index], _state->cuda_stream);
+    }
     
     _state->put_index = (_state->put_index + 1) % _capacity;
     if (!_state->task->scheduled())
@@ -186,8 +197,8 @@ bool GPUElementWithCopy::run_task(Task *task) {
     }
 
     /* Copy back to the packet */
-    char *batch_memory = _state->memory + (_state->get_index << _log_max_batch);
-    char *loop_ptr = batch_memory;
+    char *h_batch_memory = _state->h_memory + (_state->get_index << _log_max_batch);
+    char *loop_ptr = h_batch_memory;
     PacketBatch *batch = _state->batches[_state->get_index];
     FOR_EACH_PACKET_SAFE(batch, p) {
         WritablePacket *q = p->uniqueify();
@@ -230,7 +241,7 @@ void GPUElementWithCopy::cleanup_base(CleanupStage) {
 
         /* Destroy CUDA resources */
         cudaStreamDestroy(s.cuda_stream);
-        cudaFreeHost(&s.memory);
+        cudaFreeHost(&s.h_memory);
         for (int i = 0; i < _capacity; i++) {
             cudaEventDestroy(s.events[i]);
         }
