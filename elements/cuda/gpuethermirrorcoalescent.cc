@@ -2,6 +2,7 @@
 #include <click/cuda/cuda_utils.hh>
 #include <click/standard/scheduleinfo.hh>
 #include <click/args.hh>
+#include <rte_ether.h>
 
 #include "gpuethermirrorcoalescent.hh"
 
@@ -10,6 +11,9 @@ CLICK_DECLS
 GPUEtherMirrorCoalescent::GPUEtherMirrorCoalescent() {};
 
 int GPUEtherMirrorCoalescent::configure(Vector<String> &conf, ErrorHandler *errh) {
+    _from = 0;
+    _to = RTE_ETHER_ADDR_LEN * 2;
+
     if (configure_base(conf, errh) != 0)
         return -1;
 

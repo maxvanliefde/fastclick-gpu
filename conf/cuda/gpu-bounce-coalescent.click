@@ -9,7 +9,7 @@
  */
 
 // Size of the mempool to allocate
-define ($nb_mbuf 65536)
+define ($nb_mbuf 65535)
 
 // Number of descriptors per ring
 define ($ndesc 2048)
@@ -26,7 +26,7 @@ info :: DPDKInfo(NB_SOCKET_MBUF 0, NB_SOCKET_MBUF $(nb_mbuf))
 
 from :: FromDPDKDevice(0, NDESC $ndesc, MAXTHREADS $maxthreads, BURST $burst) 
     -> MinBatch($minbatch, TIMER 1000) 
-    -> GPUEtherMirrorCoalescent(FROM 0, TO 12, VERBOSE false, CAPACITY 4096, MAX_BATCH $batch, ZEROCOPY $zerocopy, BLOCKING false) 
+    -> GPUEtherMirrorCoalescent(VERBOSE false, CAPACITY 1024, MAX_BATCH $batch, ZEROCOPY $zerocopy, COPYBACK false, BLOCKING false) 
     -> ToDPDKDevice(0, NDESC $ndesc, MAXTHREADS $maxthreads, BLOCKING true)
 
 /* For debug purposes */
