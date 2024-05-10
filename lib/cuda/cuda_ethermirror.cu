@@ -8,14 +8,14 @@
 __global__ void kernel_ether_mirror(char *batch_memory, uint32_t n_pkts) {
     int pkt_id = blockIdx.x * blockDim.x + threadIdx.x;
     // printf("griddim %d blockdim %d threadidx %d", gridDim.x, blockDim.x, threadIdx.x);
-    uint8_t *src, *dst, tmp[6];
-    int stride = 12;
+    uint8_t *src, *dst, tmp[RTE_ETHER_ADDR_LEN];
+    int stride = 2*RTE_ETHER_ADDR_LEN;
 
     /* Workload */
     if (pkt_id < n_pkts) {
         char *data = batch_memory + stride * pkt_id;
         src = (uint8_t *) data;
-        dst = (uint8_t *) data + 6;
+        dst = (uint8_t *) data + RTE_ETHER_ADDR_LEN;
 
         /* Verify source and dest of ethernet addresses */
         // printf("Before Swap, Source: %02x:%02x:%02x:%02x:%02x:%02x Dest: %02x:%02x:%02x:%02x:%02x:%02x\n",
@@ -24,9 +24,9 @@ __global__ void kernel_ether_mirror(char *batch_memory, uint32_t n_pkts) {
 
         /* Swap addresses */
         uint8_t j;
-        for (j = 0; j < 6; j++) tmp[j] = src[j];
-        for (j = 0; j < 6; j++) src[j] = dst[j];
-        for (j = 0; j < 6; j++) dst[j] = tmp[j];
+        for (j = 0; j < RTE_ETHER_ADDR_LEN; j++) tmp[j] = src[j];
+        for (j = 0; j < RTE_ETHER_ADDR_LEN; j++) src[j] = dst[j];
+        for (j = 0; j < RTE_ETHER_ADDR_LEN; j++) dst[j] = tmp[j];
 
         /* Verify source and dest of ethernet addresses */
         // printf("After Swap, Source: %02x:%02x:%02x:%02x:%02x:%02x Dest: %02x:%02x:%02x:%02x:%02x:%02x\n",
