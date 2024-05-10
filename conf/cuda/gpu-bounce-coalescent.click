@@ -26,7 +26,7 @@ info :: DPDKInfo(NB_SOCKET_MBUF 0, NB_SOCKET_MBUF $(nb_mbuf))
 
 from :: FromDPDKDevice(0, NDESC $ndesc, MAXTHREADS $maxthreads, BURST $burst) 
     -> MinBatch($minbatch, TIMER 1000) 
-    -> GPUEtherMirrorCoalescent(VERBOSE false, CAPACITY 1024, MAX_BATCH $batch, ZEROCOPY $zerocopy, COPYBACK false, BLOCKING false) 
+    -> GPUEtherMirrorCoalescent(VERBOSE false, CAPACITY 128, MAX_BATCH $batch, ZEROCOPY $zerocopy, COPYBACK false, BLOCKING false, QUEUES_PER_CORE 8) 
     -> ToDPDKDevice(0, NDESC $ndesc, MAXTHREADS $maxthreads, BLOCKING true)
 
 /* For debug purposes */

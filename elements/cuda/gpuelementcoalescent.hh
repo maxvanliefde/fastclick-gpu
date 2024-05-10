@@ -29,14 +29,18 @@ public:
     void run_timer(Timer *);
 
 protected:
-    struct state {
+    struct queue_state {
         char *h_memory, *d_memory;
-        Task *task;
-        Timer *timer;
         uint32_t put_index, get_index;
         cudaStream_t cuda_stream;
         cudaEvent_t *events;
         PacketBatch **batches;
+    };
+    struct state {
+        struct queue_state *queues;
+        uint8_t next_queue_put, next_queue_get;
+        Task *task;
+        Timer *timer;
     };
     per_thread<state> _state;
 
@@ -51,6 +55,7 @@ protected:
     bool _verbose;
     bool _zc;
     bool _copyback;
+    uint8_t _queues_per_core;
     int _cuda_threads, _cuda_blocks;
 };
 
