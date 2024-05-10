@@ -1,5 +1,5 @@
-#ifndef CLICK_GPUETHERMIRRORWITHCOPY_HH
-#define CLICK_GPUETHERMIRRORWITHCOPY_HH
+#ifndef CLICK_GPUETHERMIRRORCOALESCENT_HH
+#define CLICK_GPUETHERMIRRORCOALESCENT_HH
 
 #include <click/batchelement.hh>
 #include <click/error.hh>
@@ -7,14 +7,14 @@
 #include <cuda_runtime.h>
 #include <click/glue.hh>
 
-#include "gpuelementwithcopy.hh"
+#include "gpuelementcoalescent.hh"
 
 CLICK_DECLS
 
-class GPUEtherMirrorWithCopy : public GPUElementWithCopy { 
+class GPUEtherMirrorCoalescent : public GPUElementCoalescent { 
 public:
-    GPUEtherMirrorWithCopy() CLICK_COLD;
-    const char *class_name() const              { return "GPUEtherMirrorWithCopy"; }
+    GPUEtherMirrorCoalescent() CLICK_COLD;
+    const char *class_name() const              { return "GPUEtherMirrorCoalescent"; }
 
     int configure(Vector<String> &, ErrorHandler *) override CLICK_COLD;
     int initialize(ErrorHandler *) override CLICK_COLD;

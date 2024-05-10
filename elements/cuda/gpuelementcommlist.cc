@@ -4,14 +4,14 @@
 #include <click/standard/scheduleinfo.hh>
 #include <click/args.hh>
 
-#include "gpuelement.hh"
+#include "gpuelementcommlist.hh"
 
 CLICK_DECLS
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 
-GPUElement::GPUElement() : _state(), _capacity(4096), _max_batch(1024), _blocks_per_q(1), _block(false), _verbose(false) {};
+GPUElementCommList::GPUElementCommList() : _state(), _capacity(4096), _max_batch(1024), _blocks_per_q(1), _block(false), _verbose(false) {};
 
-int GPUElement::configure_base(Vector<String> &conf, ErrorHandler *errh) {
+int GPUElementCommList::configure_base(Vector<String> &conf, ErrorHandler *errh) {
     if (Args(conf, this, errh)
         .bind(conf)
         .read_p("CAPACITY", _capacity)
@@ -32,7 +32,7 @@ int GPUElement::configure_base(Vector<String> &conf, ErrorHandler *errh) {
     return 0;
 }
 
-int GPUElement::initialize_base(ErrorHandler *errh, base_wrapper_persistent_kernel launch_kernel) {
+int GPUElementCommList::initialize_base(ErrorHandler *errh, base_wrapper_persistent_kernel launch_kernel) {
     _usable_threads = get_pushing_threads();
 
     for (int th_id = 0; th_id < master()->nthreads(); th_id++) {
@@ -79,7 +79,7 @@ int GPUElement::initialize_base(ErrorHandler *errh, base_wrapper_persistent_kern
 #if HAVE_BATCH
 
 /* Sends the batch to the GPU */
-void GPUElement::push_batch(int port, PacketBatch *batch) {
+void GPUElementCommList::push_batch(int port, PacketBatch *batch) {
     ErrorHandler *errh = ErrorHandler::default_handler();
     enum rte_gpu_comm_list_status status;
     int ret;
@@ -140,7 +140,7 @@ void GPUElement::push_batch(int port, PacketBatch *batch) {
         _state->task->reschedule();
 }
 
-bool GPUElement::run_task(Task *task) {
+bool GPUElementCommList::run_task(Task *task) {
     enum rte_gpu_comm_list_status status;
     uint32_t n;
     struct rte_mbuf **pkts;
@@ -178,20 +178,20 @@ bool GPUElement::run_task(Task *task) {
     return true;
 }
 
-void GPUElement::run_timer(Timer *timer) {
+void GPUElementCommList::run_timer(Timer *timer) {
     _state->task->reschedule();
     timer->schedule_now();
 }
 
 #endif
 
-bool GPUElement::get_spawning_threads(Bitvector& bmp, bool isoutput, int port) {
+bool GPUElementCommList::get_spawning_threads(Bitvector& bmp, bool isoutput, int port) {
     return true;
 }
 
 
 /* Cleans all structures */
-void GPUElement::cleanup_base(CleanupStage) {
+void GPUElementCommList::cleanup_base(CleanupStage) {
     ErrorHandler *errh = ErrorHandler::default_handler();
 
     for (int i = 0; i < _state.weight(); i++) {
@@ -224,4 +224,4 @@ void GPUElement::cleanup_base(CleanupStage) {
 
 ELEMENT_REQUIRES(batch cuda)
 CLICK_ENDDECLS
-EXPORT_ELEMENT(GPUElement)
+EXPORT_ELEMENT(GPUElementCommList)

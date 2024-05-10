@@ -5,18 +5,18 @@
 #include <click/args.hh>
 #include <click/algorithm.hh>
 
-#include "gpuelementwithcopy.hh"
+#include "gpuelementcoalescent.hh"
 
 CLICK_DECLS
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 
-GPUElementWithCopy::GPUElementWithCopy() : _state(), _capacity(4096), _max_batch(1024), _block(false), _verbose(false), _zc(true) {};
+GPUElementCoalescent::GPUElementCoalescent() : _state(), _capacity(4096), _max_batch(1024), _block(false), _verbose(false), _zc(true) {};
 
-int GPUElementWithCopy::configure_base(Vector<String> &conf, ErrorHandler *errh) {
+int GPUElementCoalescent::configure_base(Vector<String> &conf, ErrorHandler *errh) {
     if (Args(conf, this, errh)
         .bind(conf)
-        .read_mp("FROM", _from)
-        .read_mp("TO", _to)
+        .read_p("FROM", _from)
+        .read_p("TO", _to)
         .read_p("CAPACITY", _capacity)
         .read_p("MAX_BATCH", _max_batch)
         .read_p("BLOCKING", _block)
@@ -51,7 +51,7 @@ int GPUElementWithCopy::configure_base(Vector<String> &conf, ErrorHandler *errh)
     return 0;
 }
 
-int GPUElementWithCopy::initialize_base(ErrorHandler *errh) {
+int GPUElementCoalescent::initialize_base(ErrorHandler *errh) {
     _usable_threads = get_pushing_threads();
 
     size_t size_per_thread = ((size_t) _stride *  _capacity) << _log_max_batch;
@@ -119,7 +119,7 @@ int GPUElementWithCopy::initialize_base(ErrorHandler *errh) {
 #if HAVE_BATCH
 
 /* Sends the batch to the GPU */
-void GPUElementWithCopy::push_batch(int port, PacketBatch *batch) {
+void GPUElementCoalescent::push_batch(int port, PacketBatch *batch) {
     ErrorHandler *errh = ErrorHandler::default_handler();
     cudaError_t ret;
 
@@ -180,7 +180,7 @@ void GPUElementWithCopy::push_batch(int port, PacketBatch *batch) {
 }
 
 /* Gets the computed batch from the GPU */
-bool GPUElementWithCopy::run_task(Task *task) {
+bool GPUElementCoalescent::run_task(Task *task) {
     uint32_t n;
     struct rte_mbuf **pkts;
     cudaError_t status;
@@ -213,20 +213,20 @@ bool GPUElementWithCopy::run_task(Task *task) {
     return true;
 }
 
-void GPUElementWithCopy::run_timer(Timer *timer) {
+void GPUElementCoalescent::run_timer(Timer *timer) {
     _state->task->reschedule();
     timer->schedule_now();
 }
 
 #endif
 
-bool GPUElementWithCopy::get_spawning_threads(Bitvector& bmp, bool isoutput, int port) {
+bool GPUElementCoalescent::get_spawning_threads(Bitvector& bmp, bool isoutput, int port) {
     return true;
 }
 
 
 /* Cleans all structures */
-void GPUElementWithCopy::cleanup_base(CleanupStage) {
+void GPUElementCoalescent::cleanup_base(CleanupStage) {
     ErrorHandler *errh = ErrorHandler::default_handler();
 
     for (int i = 0; i < _state.weight(); i++) {
@@ -252,4 +252,4 @@ void GPUElementWithCopy::cleanup_base(CleanupStage) {
 
 ELEMENT_REQUIRES(batch cuda)
 CLICK_ENDDECLS
-EXPORT_ELEMENT(GPUElementWithCopy)
+EXPORT_ELEMENT(GPUElementCoalescent)

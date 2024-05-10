@@ -8,7 +8,7 @@
 #include <click/glue.hh>
 #include <click/cuda/kerneliplookup.hh>
 
-#include "gpuelement.hh"
+#include "gpuelementcommlist.hh"
 
 CLICK_DECLS
 
@@ -20,7 +20,7 @@ struct Route {
     int32_t extra;
 };
 
-class GPUIPLookup : public GPUElement { 
+class GPUIPLookup : public GPUElementCommList { 
 public:
     GPUIPLookup() CLICK_COLD;
     const char *class_name() const              { return "GPUIPLookup"; }

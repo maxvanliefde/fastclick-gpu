@@ -1,5 +1,5 @@
-#ifndef CLICK_GPUETHERMIRROR_HH
-#define CLICK_GPUETHERMIRROR_HH
+#ifndef CLICK_GPUETHERMIRRORCOMMLIST_HH
+#define CLICK_GPUETHERMIRRORCOMMLIST_HH
 
 #include <click/batchelement.hh>
 #include <click/error.hh>
@@ -7,14 +7,14 @@
 #include <cuda_runtime.h>
 #include <click/glue.hh>
 
-#include "gpuelement.hh"
+#include "gpuelementcommlist.hh"
 
 CLICK_DECLS
 
-class GPUEtherMirror : public GPUElement { 
+class GPUEtherMirrorCommList : public GPUElementCommList { 
 public:
-    GPUEtherMirror() CLICK_COLD;
-    const char *class_name() const              { return "GPUEtherMirror"; }
+    GPUEtherMirrorCommList() CLICK_COLD;
+    const char *class_name() const              { return "GPUEtherMirrorCommList"; }
 
     int configure(Vector<String> &, ErrorHandler *) override CLICK_COLD;
     int initialize(ErrorHandler *) override CLICK_COLD;

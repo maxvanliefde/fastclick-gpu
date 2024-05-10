@@ -4,13 +4,13 @@
 #include <click/standard/scheduleinfo.hh>
 #include <click/args.hh>
 
-#include "gpuethermirror.hh"
+#include "gpuethermirrorcommlist.hh"
 
 CLICK_DECLS
 
-GPUEtherMirror::GPUEtherMirror() {};
+GPUEtherMirrorCommList::GPUEtherMirrorCommList() {};
 
-int GPUEtherMirror::configure(Vector<String> &conf, ErrorHandler *errh) {
+int GPUEtherMirrorCommList::configure(Vector<String> &conf, ErrorHandler *errh) {
     if (configure_base(conf, errh) != 0)
         return -1;
 
@@ -21,14 +21,14 @@ int GPUEtherMirror::configure(Vector<String> &conf, ErrorHandler *errh) {
     return 0;
 }
 
-int GPUEtherMirror::initialize(ErrorHandler *errh) {
+int GPUEtherMirrorCommList::initialize(ErrorHandler *errh) {
     return initialize_base(errh, wrapper_ether_mirror_persistent);
 }
 
-void GPUEtherMirror::cleanup(CleanupStage cs) {
+void GPUEtherMirrorCommList::cleanup(CleanupStage cs) {
     cleanup_base(cs);
 }
 
 ELEMENT_REQUIRES(batch cuda)
 CLICK_ENDDECLS
-EXPORT_ELEMENT(GPUEtherMirror)
+EXPORT_ELEMENT(GPUEtherMirrorCommList)
