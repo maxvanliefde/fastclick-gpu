@@ -18,7 +18,7 @@ CLICK_DECLS
 
 Pipeliner::Pipeliner()
     :   _ring_size(-1),_burst(32),
-        _home_thread_id(0), _block(false),
+        _home_thread_id(-1), _block(false),
         _active(true),_nouseless(false),_always_up(false),
         _allow_direct_traversal(true), _verbose(true),
         sleepiness(0),_sleep_threshold(0), _highwater(0),
@@ -75,6 +75,7 @@ Pipeliner::configure(Vector<String> & conf, ErrorHandler * errh)
     .read("NOUSELESS",_nouseless)
     .read("VERBOSE",_verbose)
     .read_or_set("PREFETCH",_prefetch, true)
+    .read("THREAD", _home_thread_id)
     .complete() < 0)
         return -1;
 
@@ -111,7 +112,8 @@ Pipeliner::thread_configure(ThreadReconfigurationStage stage, ErrorHandler* errh
     Bitvector passing = get_passing_threads(false, -1, this, fp);
     storage.compress(passing);
     stats.compress(passing);
-    _home_thread_id = home_thread_id();
+    if (_home_thread_id == -1)
+        _home_thread_id = home_thread_id();
 
     for (unsigned i = 0; i < storage.weight(); i++) {
         if (!storage.get_value(i).initialized())
