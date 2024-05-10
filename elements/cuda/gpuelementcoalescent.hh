@@ -50,6 +50,7 @@ protected:
     bool _block;
     bool _verbose;
     bool _zc;
+    bool _copyback;
     int _cuda_threads, _cuda_blocks;
 };
 

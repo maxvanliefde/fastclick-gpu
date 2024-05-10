@@ -10,7 +10,7 @@
 CLICK_DECLS
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 
-GPUElementCoalescent::GPUElementCoalescent() : _state(), _capacity(4096), _max_batch(1024), _block(false), _verbose(false), _zc(true) {};
+GPUElementCoalescent::GPUElementCoalescent() : _state(), _capacity(4096), _max_batch(1024), _block(false), _verbose(false), _zc(true), _copyback(false) {};
 
 int GPUElementCoalescent::configure_base(Vector<String> &conf, ErrorHandler *errh) {
     if (Args(conf, this, errh)
@@ -22,14 +22,19 @@ int GPUElementCoalescent::configure_base(Vector<String> &conf, ErrorHandler *err
         .read_p("BLOCKING", _block)
         .read("VERBOSE", _verbose)
         .read_p("ZEROCOPY", _zc)
+        .read_p("COPYBACK", _copyback)
         .consume() < 0) 
     {
         return -1;
     }
 
+    if (_zc && _copyback) {
+        errh->warning("Warning: COPYBACK has no impact when ZEROCOPY is enabled");
+    }
+
     /* Compute stride */
     if (_to <= _from) {
-        return errh->error("TO should be greather than FROM, but from = %d and to = %d", _to, _from);
+        return errh->error("TO should be greather than FROM, but from = %d and to = %d", _from, _to);
     }
     _stride = _to - _from;
 
@@ -170,7 +175,8 @@ void GPUElementCoalescent::push_batch(int port, PacketBatch *batch) {
         size_t size = loop_ptr - h_batch_memory;
         cudaMemcpyAsync(d_batch_memory, h_batch_memory, size, cudaMemcpyHostToDevice, _state->cuda_stream);
         wrapper_ether_mirror(d_batch_memory, n, _cuda_blocks, _cuda_threads, _state->cuda_stream);
-        cudaMemcpyAsync(h_batch_memory, d_batch_memory, size, cudaMemcpyDeviceToHost, _state->cuda_stream);
+        if (_copyback)
+            cudaMemcpyAsync(h_batch_memory, d_batch_memory, size, cudaMemcpyDeviceToHost, _state->cuda_stream);
         cudaEventRecord(_state->events[_state->put_index], _state->cuda_stream);
     }
     
