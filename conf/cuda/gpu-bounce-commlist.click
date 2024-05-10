@@ -19,15 +19,15 @@ define ($batch 128)
 define ($burst 32)
 define ($minbatch 96) // has to be $batch - $burst
 
-define ($maxthreads 1)
+define ($maxthreads 3)
 
-define ($capacity 4096)
+define ($capacity 128)
 
 info :: DPDKInfo(NB_SOCKET_MBUF 0, NB_SOCKET_MBUF $(nb_mbuf))
 
 FromDPDKDevice(0, NDESC $ndesc, MAXTHREADS $maxthreads, BURST $burst) 
     -> MinBatch($minbatch, TIMER 1000) 
-    -> GPUEtherMirrorCommList(VERBOSE false, CAPACITY $capacity, MAX_BATCH $batch, THREAD_BLOCKS_PER_QUEUE 1) 
+    -> GPUEtherMirrorCommList(VERBOSE false, CAPACITY $capacity, MAX_BATCH $batch, LISTS_PER_CORE 2) 
     -> ToDPDKDevice(0, NDESC $ndesc, MAXTHREADS $maxthreads, BLOCKING false)
 
 /* For debug purposes */

@@ -9,7 +9,7 @@
 CLICK_DECLS
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 
-GPUElementCommList::GPUElementCommList() : _state(), _capacity(4096), _max_batch(1024), _blocks_per_q(1), _block(false), _verbose(false) {};
+GPUElementCommList::GPUElementCommList() : _state(), _capacity(4096), _max_batch(1024), _blocks_per_q(1), _block(false), _verbose(false), _lists_per_core(1) {};
 
 int GPUElementCommList::configure_base(Vector<String> &conf, ErrorHandler *errh) {
     if (Args(conf, this, errh)
@@ -19,6 +19,7 @@ int GPUElementCommList::configure_base(Vector<String> &conf, ErrorHandler *errh)
         .read_p("THREAD_BLOCKS_PER_QUEUE", _blocks_per_q)
         .read_p("BLOCKING", _block)
         .read("VERBOSE", _verbose)
+        .read("LISTS_PER_CORE", _lists_per_core)
         .consume() < 0) 
     {
         return -1;
@@ -26,6 +27,11 @@ int GPUElementCommList::configure_base(Vector<String> &conf, ErrorHandler *errh)
 
     if (_max_batch > RTE_GPU_COMM_LIST_PKTS_MAX) {
         errh->error("Given MAX_BATCH = %d but the maximum is %d", _max_batch, RTE_GPU_COMM_LIST_PKTS_MAX);
+        return -1;
+    }
+
+    if (_lists_per_core == 0) {
+        errh->error("Given LISTS_PER_CORE = 0 but it has to be at least 1");
         return -1;
     }
 
@@ -40,13 +46,6 @@ int GPUElementCommList::initialize_base(ErrorHandler *errh, base_wrapper_persist
             continue;
 
         state &s = _state.get_value(th_id);
-        s.comm_list_put_index = 0;
-        s.comm_list_get_index = 0;
-        s.comm_list_size = _capacity;
-        s.comm_list = rte_gpu_comm_create_list(0, s.comm_list_size);   // todo generify GPU
-        if (s.comm_list == NULL)  {
-            return errh->error("Unable to create the GPU communication list for thread %d", th_id);
-        }
 
         s.task = new Task(this);
         ScheduleInfo::initialize_task(this, s.task, false, errh);
@@ -56,17 +55,30 @@ int GPUElementCommList::initialize_base(ErrorHandler *errh, base_wrapper_persist
         s.timer->initialize(this);
         s.timer->move_thread(th_id);
         s.timer->schedule_now();
-        
-        cudaError_t cuda_ret = cudaStreamCreate(&s.cuda_stream);
-        CUDA_CHECK(cuda_ret, errh);
-        launch_kernel(s.comm_list, s.comm_list_size, _blocks_per_q, _max_batch, s.cuda_stream);
-        CUDA_CHECK(cudaGetLastError(), errh);
+
+        s.next_list_get = 0;
+        s.next_list_put = 0;
+        s.comm_lists = new comm_list_state[_lists_per_core];
+        for (uint8_t list_id = 0; list_id < _lists_per_core; list_id++) {
+            s.comm_lists[list_id].comm_list_put_index = 0;
+            s.comm_lists[list_id].comm_list_get_index = 0;
+            s.comm_lists[list_id].comm_list_size = _capacity;        
+            s.comm_lists[list_id].comm_list = rte_gpu_comm_create_list(0, s.comm_lists[list_id].comm_list_size);   // todo generify GPU
+            if (s.comm_lists[list_id].comm_list == NULL)  {
+                return errh->error("Unable to create the GPU communication list for thread %d", th_id);
+            }
+
+            cudaError_t cuda_ret = cudaStreamCreate(&s.comm_lists[list_id].cuda_stream);
+            CUDA_CHECK(cuda_ret, errh);
+            launch_kernel(s.comm_lists[list_id].comm_list, s.comm_lists[list_id].comm_list_size, _blocks_per_q, _max_batch, s.comm_lists[list_id].cuda_stream);
+            CUDA_CHECK(cudaGetLastError(), errh);
+        }
     }
 
     if (_verbose) {
-        click_chatter("%p{element}: %d usable threads, %d queue per thread, %d batch per queue.",
+        click_chatter("%p{element}: %d usable threads, %d list%s per thread, %d batch per list.",
             this,
-            _usable_threads.weight(), 1, _capacity
+            _usable_threads.weight(), _lists_per_core, _lists_per_core == 1 ? "" : "s", _capacity
         );
         for (int th_id = 0; th_id < master()->nthreads(); th_id++)
             if (_usable_threads[th_id])
@@ -101,9 +113,13 @@ void GPUElementCommList::push_batch(int port, PacketBatch *batch) {
     int i = 0;
     FOR_EACH_PACKET(batch, p)
         array[i++] = reinterpret_cast<struct rte_mbuf *>(p);
-    
+
+    // populate lists in round robin fashion
+    struct comm_list_state *list_state = &_state->comm_lists[_state->next_list_put];
+    _state->next_list_put = (_state->next_list_put + 1) % _lists_per_core;
+
     do {
-        ret = rte_gpu_comm_get_status(&_state->comm_list[_state->comm_list_put_index], &status);
+        ret = rte_gpu_comm_get_status(&list_state->comm_list[list_state->comm_list_put_index], &status);
         if (ret != 0) {
             errh->error("rte_gpu_comm_get_status returned error %d\n", ret);
             batch->kill();
@@ -127,7 +143,7 @@ void GPUElementCommList::push_batch(int port, PacketBatch *batch) {
         }
     } while(unlikely(status != RTE_GPU_COMM_LIST_FREE));
     
-    ret = rte_gpu_comm_populate_list_pkts(&_state->comm_list[_state->comm_list_put_index], array, n);     // includes call to gpu_wmb
+    ret = rte_gpu_comm_populate_list_pkts(&list_state->comm_list[list_state->comm_list_put_index], array, n);     // includes call to gpu_wmb
     if (ret != 0) {
         errh->error("rte_gpu_comm_populate_list_pkts returned error %d (size was %d )\n", ret, n);
         batch->kill();
@@ -135,7 +151,7 @@ void GPUElementCommList::push_batch(int port, PacketBatch *batch) {
     }
     rte_wmb();
 
-    _state->comm_list_put_index = (_state->comm_list_put_index + 1) % _state->comm_list_size;
+    list_state->comm_list_put_index = (list_state->comm_list_put_index + 1) % list_state->comm_list_size;
     if (!_state->task->scheduled())
         _state->task->reschedule();
 }
@@ -145,7 +161,11 @@ bool GPUElementCommList::run_task(Task *task) {
     uint32_t n;
     struct rte_mbuf **pkts;
 
-    rte_gpu_comm_get_status(&_state->comm_list[_state->comm_list_get_index], &status);
+    // read lists in round robin fashion
+    struct comm_list_state *list_state = &_state->comm_lists[_state->next_list_get];
+    _state->next_list_get = (_state->next_list_get + 1) % _lists_per_core;
+
+    rte_gpu_comm_get_status(&list_state->comm_list[list_state->comm_list_get_index], &status);
     if (status != RTE_GPU_COMM_LIST_DONE) {
         task->fast_reschedule();
         return false;
@@ -156,8 +176,8 @@ bool GPUElementCommList::run_task(Task *task) {
     /* Batch the processed packets */
     PacketBatch *head = nullptr;
     WritablePacket *packet, *last;
-    n = _state->comm_list[_state->comm_list_get_index].num_pkts;
-    pkts = _state->comm_list[_state->comm_list_get_index].mbufs;
+    n = list_state->comm_list[list_state->comm_list_get_index].num_pkts;
+    pkts = list_state->comm_list[list_state->comm_list_get_index].mbufs;
     for (uint32_t i = 0; i < n; i++) {
         packet = static_cast<WritablePacket *>(Packet::make(pkts[i]));
         if (head == NULL) 
@@ -171,10 +191,10 @@ bool GPUElementCommList::run_task(Task *task) {
         output_push_batch(0, head);
     }
 
-    rte_gpu_comm_cleanup_list(&_state->comm_list[_state->comm_list_get_index]);
+    rte_gpu_comm_cleanup_list(&list_state->comm_list[list_state->comm_list_get_index]);
     rte_mb();
 
-    _state->comm_list_get_index = (_state->comm_list_get_index + 1) % _state->comm_list_size;
+    list_state->comm_list_get_index = (list_state->comm_list_get_index + 1) % list_state->comm_list_size;
     return true;
 }
 
@@ -206,19 +226,22 @@ void GPUElementCommList::cleanup_base(CleanupStage) {
 
         /* Terminating CUDA kernels */
         int ret;
-        for (int index = 0; index < s.comm_list_size; index++) {
-            ret = rte_gpu_comm_set_status(&s.comm_list[index], RTE_GPU_COMM_LIST_ERROR);
-            if (ret != 0) {
-                errh->error(
-                    "Can't set status RTE_GPU_COMM_LIST_ERROR on item %d for thread i."
-                    "This probably means that the GPU kernel associated will never finish!", index, i);
+        for (uint8_t list_id = 0; list_id < _lists_per_core; list_id++) {
+            for (int index = 0; index < s.comm_lists[list_id].comm_list_size; index++) {
+                ret = rte_gpu_comm_set_status(&s.comm_lists[list_id].comm_list[index], RTE_GPU_COMM_LIST_ERROR);
+                if (ret != 0) {
+                    errh->error(
+                        "Can't set status RTE_GPU_COMM_LIST_ERROR on item %d for thread i."
+                        "This probably means that the GPU kernel associated will never finish!", index, i);
+                }
             }
-        }
-        CUDA_CHECK(cudaStreamSynchronize(s.cuda_stream), errh);
+            CUDA_CHECK(cudaStreamSynchronize(s.comm_lists[list_id].cuda_stream), errh);
 
-        /* Destroy the stream and the communication list */
-        cudaStreamDestroy(s.cuda_stream);
-        // rte_gpu_comm_destroy_list(s.comm_list, s.comm_list_size);    // does not work
+            /* Destroy the stream and the communication list */
+            cudaStreamDestroy(s.comm_lists[list_id].cuda_stream);
+            // rte_gpu_comm_destroy_list(s.comm_lists[list_id].comm_list, s.comm_lists[list_id].comm_list_size);    // does not work
+        }
+        delete[] s.comm_lists;
     }
 }
 

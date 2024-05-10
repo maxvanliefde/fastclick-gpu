@@ -29,13 +29,18 @@ public:
     void run_timer(Timer *);
 
 protected:
-    struct state {
+    struct comm_list_state {
         struct rte_gpu_comm_list *comm_list;
         uint32_t comm_list_size;
         uint32_t comm_list_put_index, comm_list_get_index;
+        cudaStream_t cuda_stream;
+    };
+
+    struct state {
+        struct comm_list_state *comm_lists;
+        uint8_t next_list_get, next_list_put;   // round robin
         Task *task;
         Timer *timer;
-        cudaStream_t cuda_stream;
     };
     per_thread<state> _state;
 
@@ -45,6 +50,7 @@ protected:
     uint32_t _capacity;
     uint16_t _blocks_per_q;
     uint16_t _max_batch;
+    uint8_t _lists_per_core;
     bool _block;
     bool _verbose;
 };
