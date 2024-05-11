@@ -71,10 +71,10 @@ __global__ void kernel_ip_lookup_persistent(struct rte_gpu_comm_list *comm_list,
             //     dst[0], dst[1], dst[2], dst[3], dst[4], dst[5]);
 
             /* Swap addresses */
-            uint8_t j;
-            for (j = 0; j < 6; j++) tmp[j] = src[j];
-            for (j = 0; j < 6; j++) src[j] = dst[j];
-            for (j = 0; j < 6; j++) dst[j] = tmp[j];
+            // uint8_t j;
+            // for (j = 0; j < 6; j++) tmp[j] = src[j];
+            // for (j = 0; j < 6; j++) src[j] = dst[j];
+            // for (j = 0; j < 6; j++) dst[j] = tmp[j];
 
             uint8_t longest = 0;
             uint32_t gateway = 0;

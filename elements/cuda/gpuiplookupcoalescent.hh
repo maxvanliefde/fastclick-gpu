@@ -6,13 +6,14 @@
 #include <click/sync.hh>
 #include <cuda_runtime.h>
 #include <click/glue.hh>
+#include <click/cuda/cuda_iplookup.hh>
 
-#include "gpuelementwithcopy.hh"
+#include "gpuelementcoalescent.hh"
 #include "route.hh"
 
 CLICK_DECLS
 
-class GPUIPLookupWithCopy : public GPUElementWithCopy { 
+class GPUIPLookupWithCopy : public GPUElementCoalescent { 
 public:
     GPUIPLookupWithCopy() CLICK_COLD;
     const char *class_name() const              { return "GPUIPLookupWithCopy"; }

@@ -3,7 +3,7 @@
 #include <click/standard/scheduleinfo.hh>
 #include <click/args.hh>
 
-#include "gpuiplookup.hh"
+#include "gpuiplookupcommlist.hh"
 
 CLICK_DECLS
 
@@ -86,9 +86,8 @@ int GPUIPLookup::configure(Vector<String> &conf, ErrorHandler *errh) {
 int GPUIPLookup::initialize(ErrorHandler *errh) {
     _usable_threads = get_pushing_threads();
     
-    int N = _ip_list_len;
-    cudaMalloc(&_ip_list_gpu, N*sizeof(RouteGPU));
-    cudaMemcpy(_ip_list_gpu, _ip_list_cpu, N*sizeof(RouteGPU), cudaMemcpyHostToDevice);
+    cudaMalloc(&_ip_list_gpu, _ip_list_len*sizeof(RouteGPU));
+    cudaMemcpy(_ip_list_gpu, _ip_list_cpu, _ip_list_len*sizeof(RouteGPU), cudaMemcpyHostToDevice);
 
 
     for (int th_id = 0; th_id < master()->nthreads(); th_id++) {
@@ -96,13 +95,6 @@ int GPUIPLookup::initialize(ErrorHandler *errh) {
             continue;
 
         state &s = _state.get_value(th_id);
-        s.comm_list_put_index = 0;
-        s.comm_list_get_index = 0;
-        s.comm_list_size = _capacity;
-        s.comm_list = rte_gpu_comm_create_list(0, s.comm_list_size);   // todo generify GPU
-        if (s.comm_list == NULL)  {
-            return errh->error("Unable to create the GPU communication list for thread %d", th_id);
-        }
 
         s.task = new Task(this);
         ScheduleInfo::initialize_task(this, s.task, false, errh);
@@ -112,11 +104,24 @@ int GPUIPLookup::initialize(ErrorHandler *errh) {
         s.timer->initialize(this);
         s.timer->move_thread(th_id);
         s.timer->schedule_now();
-        
-        cudaError_t cuda_ret = cudaStreamCreate(&s.cuda_stream);
-        CUDA_CHECK(cuda_ret, errh);
-        wrapper_ip_lookup_persistent(s.comm_list, s.comm_list_size, _blocks_per_q, _max_batch, s.cuda_stream, _ip_list_gpu, N);
-        CUDA_CHECK(cudaGetLastError(), errh);
+
+        s.next_list_get = 0;
+        s.next_list_put = 0;
+        s.comm_lists = new comm_list_state[_lists_per_core];
+        for (uint8_t list_id = 0; list_id < _lists_per_core; list_id++) {
+            s.comm_lists[list_id].comm_list_put_index = 0;
+            s.comm_lists[list_id].comm_list_get_index = 0;
+            s.comm_lists[list_id].comm_list_size = _capacity;        
+            s.comm_lists[list_id].comm_list = rte_gpu_comm_create_list(0, s.comm_lists[list_id].comm_list_size);   // todo generify GPU
+            if (s.comm_lists[list_id].comm_list == NULL)  {
+                return errh->error("Unable to create the GPU communication list for thread %d", th_id);
+            }
+
+            cudaError_t cuda_ret = cudaStreamCreate(&s.comm_lists[list_id].cuda_stream);
+            CUDA_CHECK(cuda_ret, errh);
+            wrapper_ip_lookup_persistent(s.comm_lists[list_id].comm_list, s.comm_lists[list_id].comm_list_size, _blocks_per_q, _max_batch, s.comm_lists[list_id].cuda_stream, _ip_list_gpu, _ip_list_len);
+            CUDA_CHECK(cudaGetLastError(), errh);
+        }
     }
 
     if (_verbose) {
@@ -134,7 +139,11 @@ bool GPUIPLookup::run_task(Task *task) {
     uint32_t n;
     struct rte_mbuf **pkts;
 
-    rte_gpu_comm_get_status(&_state->comm_list[_state->comm_list_get_index], &status);
+    // read lists in round robin fashion
+    struct comm_list_state *list_state = &_state->comm_lists[_state->next_list_get];
+    _state->next_list_get = (_state->next_list_get + 1) % _lists_per_core;
+
+    rte_gpu_comm_get_status(&list_state->comm_list[list_state->comm_list_get_index], &status);
     if (status != RTE_GPU_COMM_LIST_DONE) {
         task->fast_reschedule();
         return false;
@@ -145,12 +154,9 @@ bool GPUIPLookup::run_task(Task *task) {
     /* Batch the processed packets */
     PacketBatch *head = nullptr;
     WritablePacket *packet, *last;
-    n = _state->comm_list[_state->comm_list_get_index].num_pkts;
-    pkts = _state->comm_list[_state->comm_list_get_index].mbufs;
+    n = list_state->comm_list[list_state->comm_list_get_index].num_pkts;
+    pkts = list_state->comm_list[list_state->comm_list_get_index].mbufs;
     for (uint32_t i = 0; i < n; i++) {
-
-        uint8_t port = 0;
-
         packet = static_cast<WritablePacket *>(Packet::make(pkts[i]));
         if (head == NULL) 
             head = PacketBatch::start_head(packet);
@@ -163,10 +169,10 @@ bool GPUIPLookup::run_task(Task *task) {
         output_push_batch(0, head);
     }
 
-    rte_gpu_comm_cleanup_list(&_state->comm_list[_state->comm_list_get_index]);
+    rte_gpu_comm_cleanup_list(&list_state->comm_list[list_state->comm_list_get_index]);
     rte_mb();
 
-    _state->comm_list_get_index = (_state->comm_list_get_index + 1) % _state->comm_list_size;
+    list_state->comm_list_get_index = (list_state->comm_list_get_index + 1) % list_state->comm_list_size;
     return true;
 }
 

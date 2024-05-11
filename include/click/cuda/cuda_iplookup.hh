@@ -6,16 +6,9 @@
 #include <cuda_runtime_api.h>
 #include <cuda_profiler_api.h>
 #include <rte_gpudev.h>
+#include <click/cuda/routegpu.hh>
 
 #ifdef HAVE_CUDA
-
-struct RouteGPU {
-    int32_t addr;
-    int32_t mask;
-    int32_t gw;
-    int32_t port;
-    int32_t extra;
-};
 
 void wrapper_iplookup(char *batch_memory, uint32_t n_pkts, int blocks, int threads, cudaStream_t stream, RouteGPU *ip_list, uint32_t len);
 

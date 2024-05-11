@@ -4,7 +4,7 @@
 #include <click/args.hh>
 #include <click/cuda/cuda_iplookup.hh>
 
-#include "gpuiplookupwithcopy.hh"
+#include "gpuiplookupcoalescent.hh"
 
 CLICK_DECLS
 
@@ -63,6 +63,7 @@ int GPUIPLookupWithCopy::configure(Vector<String> &conf, ErrorHandler *errh) {
         .read_p("ZEROCOPY", _zc)
         .consume() < 0) 
     {
+        printf("wtf\n");
         return -1;
     }
 
@@ -140,28 +141,35 @@ int GPUIPLookupWithCopy::initialize(ErrorHandler *errh) {
         s.timer->move_thread(th_id);
         s.timer->schedule_now();
 
-        cudaError_t cuda_ret = cudaStreamCreate(&s.cuda_stream);
-        CUDA_CHECK_RET(cuda_ret, errh);
+        s.queues = new struct queue_state[_queues_per_core];
+        s.next_queue_put = 0;
+        s.next_queue_get = 0;
+        for (uint8_t queue_id = 0; queue_id < _queues_per_core; queue_id++) {
+            struct queue_state *queue = &s.queues[queue_id];
 
-        if (_zc) {
-            // Under Unified Virtual Addressing, host and device pointers are the same. 
-            cuda_ret = cudaHostAlloc((void **) &s.h_memory, size_per_thread, cudaHostAllocMapped);
+            cudaError_t cuda_ret = cudaStreamCreate(&queue->cuda_stream);
             CUDA_CHECK_RET(cuda_ret, errh);
-            s.d_memory = s.h_memory;
-        } else {
-            cuda_ret = cudaHostAlloc(&s.h_memory, size_per_thread, cudaHostAllocDefault);
-            CUDA_CHECK_RET(cuda_ret, errh);
-            cuda_ret = cudaMalloc((void **) &s.d_memory, size_per_thread);
-            CUDA_CHECK_RET(cuda_ret, errh);
-        }
 
-        s.put_index = 0;
-        s.get_index = 0;
-        s.events = new cudaEvent_t[_capacity];
-        s.batches = new PacketBatch*[_capacity];
-        for (int i = 0; i < _capacity; i++) {
-            cudaEventCreateWithFlags(&s.events[i], cudaEventDisableTiming);
-            s.batches[i] = nullptr;
+            if (_zc) {
+                // Under Unified Virtual Addressing, host and device pointers are the same. 
+                cuda_ret = cudaHostAlloc((void **) &queue->h_memory, size_per_thread, cudaHostAllocMapped);
+                CUDA_CHECK_RET(cuda_ret, errh);
+                queue->d_memory = queue->h_memory;
+            } else {
+                cuda_ret = cudaHostAlloc(&queue->h_memory, size_per_thread, cudaHostAllocDefault);
+                CUDA_CHECK_RET(cuda_ret, errh);
+                cuda_ret = cudaMalloc((void **) &queue->d_memory, size_per_thread);
+                CUDA_CHECK_RET(cuda_ret, errh);
+            }
+
+            queue->put_index = 0;
+            queue->get_index = 0;
+            queue->events = new cudaEvent_t[_capacity];
+            queue->batches = new PacketBatch*[_capacity];
+            for (int i = 0; i < _capacity; i++) {
+                cudaEventCreateWithFlags(&queue->events[i], cudaEventDisableTiming);
+                queue->batches[i] = nullptr;
+            }
         }
     }
 
@@ -194,47 +202,63 @@ void GPUIPLookupWithCopy::push_batch(int port, PacketBatch *batch) {
         n = batch->count();
     }
 
-    char *h_batch_memory = _state->h_memory + (_state->put_index << _log_max_batch);
+    struct queue_state *queue = &_state->queues[_state->next_queue_put];
+    uint8_t id = _state->next_queue_put;
+    _state->next_queue_put = (_state->next_queue_put + 1) % _queues_per_core;
+
+    char *h_batch_memory = queue->h_memory + (queue->put_index << _log_max_batch);
     char *loop_ptr = h_batch_memory;
 
     FOR_EACH_PACKET(batch, p) {
         const unsigned char *data = p->data();
-        // printf("test:%d, %d, %d, %d\n", (data + _from), (data + _from + 1), (data + _from + 2), (data + _from + 3));
         memcpy(loop_ptr, data + _from, _stride);
         loop_ptr += _stride;
     }
 
-    while (unlikely(_state->batches[_state->put_index] != nullptr)) {
+    while (unlikely(queue->batches[queue->put_index] != nullptr)) {
         if (_block) {
             // TODO fix blocking mode, it never switches to the task 
             _state->task->reschedule();
             if (unlikely(_verbose))
-                click_chatter("%p{element} Congestion: List is not free!" 
-                    "GPU processing is likely too slow, or the list is too small, consider increasing CAPACITY", this);
+                click_chatter("%p{element} Congestion: Queue %u is not free!" 
+                    "GPU processing is likely too slow, or the list is too small, consider increasing CAPACITY", this, id);
         } else {
             batch->kill();
             if (unlikely(_verbose))
-                click_chatter("%p{element} Dropped %d packets: List is not free!" 
-                    "GPU processing is likely too slow, or the list is too small, consider increasing CAPACITY", this, n);
+                click_chatter("%p{element} Dropped %d packets: Queue %u is not free!" 
+                    "GPU processing is likely too slow, or the list is too small, consider increasing CAPACITY", this, n, id);
             return;
         }
     }
 
-    _state->batches[_state->put_index] = batch;
+    queue->batches[queue->put_index] = batch;
 
     if (_zc) {
-        wrapper_iplookup(h_batch_memory, n, _cuda_blocks, _cuda_threads, _state->cuda_stream, _ip_list_gpu, _ip_list_len);
-        cudaEventRecord(_state->events[_state->put_index], _state->cuda_stream);
+        wrapper_iplookup(h_batch_memory, n, _cuda_blocks, _cuda_threads, queue->cuda_stream, _ip_list_gpu, _ip_list_len);
+        cudaEventRecord(queue->events[queue->put_index], queue->cuda_stream);
     } else {
-        char *d_batch_memory = _state->d_memory + (_state->put_index << _log_max_batch);
+        char *d_batch_memory = queue->d_memory + (queue->put_index << _log_max_batch);
         size_t size = loop_ptr - h_batch_memory;
-        cudaMemcpyAsync(d_batch_memory, h_batch_memory, size, cudaMemcpyHostToDevice, _state->cuda_stream);
-        wrapper_iplookup(d_batch_memory, n, _cuda_blocks, _cuda_threads, _state->cuda_stream, _ip_list_gpu, _ip_list_len);
-        cudaMemcpyAsync(h_batch_memory, d_batch_memory, size, cudaMemcpyDeviceToHost, _state->cuda_stream);
-        cudaEventRecord(_state->events[_state->put_index], _state->cuda_stream);
+        cudaMemcpyAsync(d_batch_memory, h_batch_memory, size, cudaMemcpyHostToDevice, queue->cuda_stream);
+        wrapper_iplookup(d_batch_memory, n, _cuda_blocks, _cuda_threads, queue->cuda_stream, _ip_list_gpu, _ip_list_len);
+        if (_copyback)
+            cudaMemcpyAsync(h_batch_memory, d_batch_memory, size, cudaMemcpyDeviceToHost, queue->cuda_stream);
+        cudaEventRecord(queue->events[queue->put_index], queue->cuda_stream);
     }
+
+    // if (_zc) {
+    //     wrapper_iplookup(h_batch_memory, n, _cuda_blocks, _cuda_threads, _state->cuda_stream, _ip_list_gpu, _ip_list_len);
+    //     cudaEventRecord(_state->events[_state->put_index], _state->cuda_stream);
+    // } else {
+    //     char *d_batch_memory = _state->d_memory + (_state->put_index << _log_max_batch);
+    //     size_t size = loop_ptr - h_batch_memory;
+    //     cudaMemcpyAsync(d_batch_memory, h_batch_memory, size, cudaMemcpyHostToDevice, _state->cuda_stream);
+    //     wrapper_iplookup(d_batch_memory, n, _cuda_blocks, _cuda_threads, _state->cuda_stream, _ip_list_gpu, _ip_list_len);
+    //     cudaMemcpyAsync(h_batch_memory, d_batch_memory, size, cudaMemcpyDeviceToHost, _state->cuda_stream);
+    //     cudaEventRecord(_state->events[_state->put_index], _state->cuda_stream);
+    // }
     
-    _state->put_index = (_state->put_index + 1) % _capacity;
+    queue->put_index = (queue->put_index + 1) % _capacity;
     if (!_state->task->scheduled())
         _state->task->reschedule();
 }
