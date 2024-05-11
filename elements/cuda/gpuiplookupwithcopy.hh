@@ -1,27 +1,26 @@
-#ifndef CLICK_GPUIPLOOKUP_HH
-#define CLICK_GPUIPLOOKUP_HH
+#ifndef CLICK_GPUIPLOOKUPWITHCOPY_HH
+#define CLICK_GPUIPLOOKUPWITHCOPY_HH
 
 #include <click/batchelement.hh>
 #include <click/error.hh>
 #include <click/sync.hh>
 #include <cuda_runtime.h>
 #include <click/glue.hh>
-#include <click/cuda/kerneliplookup.hh>
 
-#include "gpuelementcommlist.hh"
+#include "gpuelementwithcopy.hh"
 #include "route.hh"
 
 CLICK_DECLS
 
-class GPUIPLookup : public GPUElementCommList { 
+class GPUIPLookupWithCopy : public GPUElementWithCopy { 
 public:
-    GPUIPLookup() CLICK_COLD;
-    const char *class_name() const              { return "GPUIPLookup"; }
+    GPUIPLookupWithCopy() CLICK_COLD;
+    const char *class_name() const              { return "GPUIPLookupWithCopy"; }
 
     int configure(Vector<String> &, ErrorHandler *) override CLICK_COLD;
     int initialize(ErrorHandler *) override CLICK_COLD;
-    bool run_task(Task *) override CLICK_COLD;
     void cleanup(CleanupStage) override CLICK_COLD;
+    void push_batch(int, PacketBatch*) override CLICK_COLD;
 
     bool cp_ip_route(String, Route *, bool, Element *);
     void print_route(Route);

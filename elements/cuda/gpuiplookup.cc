@@ -7,7 +7,10 @@
 
 CLICK_DECLS
 
-bool cp_ip_route(String s, Route *r_store, bool remove_route, Element *context)
+
+GPUIPLookup::GPUIPLookup() : _ip_list_len(1), _ip_list_cpu(), _ip_list_gpu() {};
+
+bool GPUIPLookup::cp_ip_route(String s, Route *r_store, bool remove_route, Element *context)
 {
     Route r;
     if (!IPPrefixArg(true).parse(cp_shift_spacevec(s), r.addr, r.mask, context))
@@ -34,15 +37,12 @@ bool cp_ip_route(String s, Route *r_store, bool remove_route, Element *context)
     return false;
 }
 
-void print_route(Route route) {
+void GPUIPLookup::print_route(Route route) {
     printf("IP address: %d.%d.%d.%d\n", (route.addr >> (0 * 8)) & 0xFF, (route.addr >> (1 * 8)) & 0xFF, (route.addr >> (2 * 8)) & 0xFF, (route.addr >> (3 * 8)) & 0xFF);
     printf("Mask: %d.%d.%d.%d\n",       (route.mask >> (0 * 8)) & 0xFF, (route.mask >> (1 * 8)) & 0xFF, (route.mask >> (2 * 8)) & 0xFF, (route.mask >> (3 * 8)) & 0xFF);
     printf("Gateway: %d.%d.%d.%d\n",    (route.gw >> (0 * 8)) & 0xFF,   (route.gw >> (1 * 8)) & 0xFF,   (route.gw >> (2 * 8)) & 0xFF,   (route.gw >> (3 * 8)) & 0xFF);
     printf("Port: %d\n", route.port);
 }
-
-
-GPUIPLookup::GPUIPLookup() : _ip_list_len(1), _ip_list_cpu(), _ip_list_gpu() {};
 
 int GPUIPLookup::configure(Vector<String> &conf, ErrorHandler *errh) {
 
@@ -53,6 +53,17 @@ int GPUIPLookup::configure(Vector<String> &conf, ErrorHandler *errh) {
 
     _ip_list_cpu = (Route*) malloc(sizeof(Route) * conf.size());
 
+    if (Args(conf, this, errh)
+        .bind(conf)
+        .read_p("CAPACITY", _capacity)
+        .consume() < 0)
+    {
+        return -1;
+    }
+    
+    // printf("capacity: %d\n", _capacity);
+
+
     for (int i = 0; i < conf.size(); i++) {
         if (!cp_ip_route(conf[i], &route, false, this)) {
             errh->error("argument %d should be %<ADDR/MASK [GATEWAY] OUTPUT%>", i+1);
@@ -61,6 +72,8 @@ int GPUIPLookup::configure(Vector<String> &conf, ErrorHandler *errh) {
             errh->error("argument %d bad OUTPUT", i+1);
             ret = -EINVAL;
         }
+
+        // print_route(route);
 
         memcpy(&(_ip_list_cpu[i]), &route, sizeof(Route));
         _ip_list_len = conf.size();
