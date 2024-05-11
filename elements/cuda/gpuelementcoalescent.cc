@@ -232,6 +232,7 @@ bool GPUElementCoalescent::run_task(Task *task) {
         WritablePacket *q = p->uniqueify();
         unsigned char *data = q->data();
         memcpy(data + _from, loop_ptr, _stride);
+        loop_ptr += _stride;
         p = q;
     }
 
