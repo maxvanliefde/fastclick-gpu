@@ -33,9 +33,9 @@ __global__ void kernel_iplookup(char *batch_memory, uint32_t n_pkts, RouteGPU *i
     /* Workload */
     if (pkt_id < n_pkts) {
         char *data = batch_memory + stride * pkt_id;
-        src = (uint8_t *) data;
-        dst = (uint8_t *) data + 6;
-        uint8_t* dst2 = (uint8_t *) data + 4;
+        // src = (uint8_t *) data;
+        // dst = (uint8_t *) data + 6;
+        // uint8_t* dst2 = (uint8_t *) data + 4;
         // printf("src: %d\n", src);
         // printf("dst: %d\n", dst);
 
@@ -49,8 +49,8 @@ __global__ void kernel_iplookup(char *batch_memory, uint32_t n_pkts, RouteGPU *i
         //     src[0], src[1], src[2], src[3], 
         //     dst2[0], dst2[1], dst2[2], dst2[3]);
 
-        uint32_t *src_addr = (uint32_t *) (data);
-        uint32_t *dst_addr = (uint32_t *) (data + 4);
+        // uint32_t *src_addr = (uint32_t *) (data);
+        uint32_t *dst_addr = (uint32_t *) (data);
 
         uint8_t longest = 0;
         uint32_t gateway = 0;
@@ -74,10 +74,10 @@ __global__ void kernel_iplookup(char *batch_memory, uint32_t n_pkts, RouteGPU *i
         //     (uint32_t) src);
 
         /* Swap addresses */
-        uint8_t j;
-        for (j = 0; j < 6; j++) tmp[j] = src[j];
-        for (j = 0; j < 6; j++) src[j] = dst[j];
-        for (j = 0; j < 6; j++) dst[j] = tmp[j];
+        // uint8_t j;
+        // for (j = 0; j < 6; j++) tmp[j] = src[j];
+        // for (j = 0; j < 6; j++) src[j] = dst[j];
+        // for (j = 0; j < 6; j++) dst[j] = tmp[j];
 
         /* Verify source and dest of ethernet addresses */
         // printf("After Swap, Source: %02x:%02x:%02x:%02x:%02x:%02x Dest: %02x:%02x:%02x:%02x:%02x:%02x\n",

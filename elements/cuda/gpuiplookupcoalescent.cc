@@ -61,6 +61,7 @@ int GPUIPLookupWithCopy::configure(Vector<String> &conf, ErrorHandler *errh) {
         .read_p("BLOCKING", _block)
         .read("VERBOSE", _verbose)
         .read_p("ZEROCOPY", _zc)
+        .read_p("QUEUES_PER_CORE", _queues_per_core)
         .consume() < 0) 
     {
         printf("wtf\n");

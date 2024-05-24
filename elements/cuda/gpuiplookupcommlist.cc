@@ -49,13 +49,14 @@ int GPUIPLookup::configure(Vector<String> &conf, ErrorHandler *errh) {
     int ret = 0, r1, eexist = 0;
     struct Route route;
 
-    _verbose = true;
+    _verbose = false;
 
     _ip_list_cpu = (Route*) malloc(sizeof(Route) * conf.size());
 
     if (Args(conf, this, errh)
         .bind(conf)
         .read_p("CAPACITY", _capacity)
+        .read("LISTS_PER_CORE", _lists_per_core)
         .consume() < 0)
     {
         return -1;
