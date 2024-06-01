@@ -2884,6 +2884,7 @@ if test "x$enable_cuda" = xyes; then
     fi
     AC_SUBST(CUDA_INCLUDES, -I/usr/local/cuda/include)
     AC_SUBST(CUDA_LIBS, "-lcuda -lcudart -L/usr/local/cuda/lib64")
+    AC_SUBST(NVCCFLAGS, ${NVCCFLAGS})
 fi
 
 
@@ -2957,6 +2958,7 @@ Configuration Summary:
 
     CUDA   support:              ${enable_cuda}
     NVCC   Compiler:             ${NVCC}
+    NVCC   Flags:                ${NVCCFLAGS}
 
     Netmap support:              ${HAVE_NETMAP}
     PCAP   support:              ${have_pcap}

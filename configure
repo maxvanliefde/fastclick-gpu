@@ -650,6 +650,7 @@ ac_header_cxx_list=
 ac_func_c_list=
 ac_subst_vars='LTLIBOBJS
 provisions
+NVCCFLAGS
 CUDA_LIBS
 CUDA_INCLUDES
 NVCC
@@ -19599,6 +19600,8 @@ fi
 
     CUDA_LIBS="-lcuda -lcudart -L/usr/local/cuda/lib64"
 
+    NVCCFLAGS=${NVCCFLAGS}
+
 fi
 
 
@@ -21002,6 +21005,7 @@ Configuration Summary:
 
     CUDA   support:              ${enable_cuda}
     NVCC   Compiler:             ${NVCC}
+    NVCC   Flags:                ${NVCCFLAGS}
 
     Netmap support:              ${HAVE_NETMAP}
     PCAP   support:              ${have_pcap}
