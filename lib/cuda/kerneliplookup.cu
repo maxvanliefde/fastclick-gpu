@@ -64,6 +64,11 @@ __global__ void kernel_ip_lookup_persistent(struct rte_gpu_comm_list *comm_list,
             ipv4 = (struct rte_ipv4_hdr *)((char *)eth + sizeof(struct rte_ether_hdr));
 
 
+            // for(int i = 0; i < len; i++) {
+            //     printf("Gateway: %d.%d.%d.%d\n",    (ip_list[i].gw >> (0 * 8)) & 0xFF,   (ip_list[i].gw >> (1 * 8)) & 0xFF,   (ip_list[i].gw >> (2 * 8)) & 0xFF,   (ip_list[i].gw >> (3 * 8)) & 0xFF);
+            // }
+
+
             /* Verify source and dest of ethernet addresses */
             // printf("Before Swap, Size: %lu, Source: %02x:%02x:%02x:%02x:%02x:%02x Dest: %02x:%02x:%02x:%02x:%02x:%02x\n",
             //     size,
@@ -77,22 +82,22 @@ __global__ void kernel_ip_lookup_persistent(struct rte_gpu_comm_list *comm_list,
             // for (j = 0; j < 6; j++) dst[j] = tmp[j];
 
             uint8_t longest = 0;
-            uint32_t gateway = 0;
+            uint32_t port = 0;
 
             for (uint32_t i = 0; i < len; i++) {
                 uint32_t dst_addr = ((uint32_t) ipv4->dst_addr) & ip_list[i].mask;
 
                 uint8_t len1 = longest_match(dst_addr, ip_list[i].addr);
                 if (len1 > longest) {
-                    gateway = ip_list[i].gw;
+                    port = ip_list[i].port;
                     longest = len1;
                 }
 
 
             }
             // printf("Src ip: %d.%d.%d.%d\n",    (ipv4->dst_addr >> (0 * 8)) & 0xFF,   (ipv4->dst_addr >> (1 * 8)) & 0xFF,   (ipv4->dst_addr >> (2 * 8)) & 0xFF,   (ipv4->dst_addr >> (3 * 8)) & 0xFF);
-            // printf("gw: %d\n", gateway);
-            // comm_list[item_id].pkt_list[pkt_id].size = gateway;
+            // printf("port: %d\n", gateway);
+            comm_list[item_id].pkt_list[pkt_id].size = port;
         }
 
         /* Finish batch */

@@ -27,13 +27,14 @@ __global__ void kernel_iplookup(char *batch_memory, uint32_t n_pkts, RouteGPU *i
     uint8_t *src, *dst, tmp[6];
     int stride = 8;
 
-    // printf("hello les bebz\n");
-    // printf("ip_list[0].addr: %d\n", ip_list[0].addr);
+    
+
+    // printf("ip_list[0].port: %d\n", ip_list[0].port);
 
     /* Workload */
     if (pkt_id < n_pkts) {
         char *data = batch_memory + stride * pkt_id;
-        // src = (uint8_t *) data;
+        src = (uint8_t *) data;
         // dst = (uint8_t *) data + 6;
         // uint8_t* dst2 = (uint8_t *) data + 4;
         // printf("src: %d\n", src);
@@ -45,15 +46,14 @@ __global__ void kernel_iplookup(char *batch_memory, uint32_t n_pkts, RouteGPU *i
         //     dst[0], dst[1], dst[2], dst[3], dst[4], dst[5]);
 
         /* Verify source and dest of internet addresses */
-        // printf("Before Swap, Source: %02x:%02x:%02x:%02x Dest: %02x:%02x:%02x:%02x\n",
-        //     src[0], src[1], src[2], src[3], 
-        //     dst2[0], dst2[1], dst2[2], dst2[3]);
+        printf("gpu: Before Swap, Source: %02x:%02x:%02x:%02x\n",
+            src[0], src[1], src[2], src[3]);
 
         // uint32_t *src_addr = (uint32_t *) (data);
         uint32_t *dst_addr = (uint32_t *) (data);
 
         uint8_t longest = 0;
-        uint32_t gateway = 0;
+        uint32_t port = 0;
 
         for (uint32_t i = 0; i < len; i++) {
             uint32_t input = (*dst_addr) & ip_list[i].mask;
@@ -61,12 +61,16 @@ __global__ void kernel_iplookup(char *batch_memory, uint32_t n_pkts, RouteGPU *i
 
             uint8_t len1 = longest_match2(input, ip_list[i].addr);
             if (len1 > longest) {
-                gateway = ip_list[i].gw;
+                port = ip_list[i].port;
                 longest = len1;
             }
 
 
         }
+
+        uint32_t *test = (uint32_t *) data;
+        printf("port= %d\n", port);
+        *test = port;
 
         // printf("aaaaaaaaah %d\n", longest);
 

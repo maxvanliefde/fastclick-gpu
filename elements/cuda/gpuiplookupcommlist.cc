@@ -69,10 +69,10 @@ int GPUIPLookup::configure(Vector<String> &conf, ErrorHandler *errh) {
         if (!cp_ip_route(conf[i], &route, false, this)) {
             errh->error("argument %d should be %<ADDR/MASK [GATEWAY] OUTPUT%>", i+1);
             ret = -EINVAL;
-        } else if (route.port < 0 || route.port >= noutputs()) {
-            errh->error("argument %d bad OUTPUT", i+1);
-            ret = -EINVAL;
-        }
+        } //else if (route.port < 0 || route.port >= noutputs()) {
+        //     errh->error("argument %d bad OUTPUT", i+1);
+        //     ret = -EINVAL;
+        // }
 
         // print_route(route);
 
@@ -81,6 +81,8 @@ int GPUIPLookup::configure(Vector<String> &conf, ErrorHandler *errh) {
     }
     if (eexist)
 	errh->warning("%d %s replaced by later versions", eexist, eexist > 1 ? "routes" : "route");
+
+    printf("done\n");
     return ret;
 }
 
@@ -159,6 +161,8 @@ bool GPUIPLookup::run_task(Task *task) {
     pkts = list_state->comm_list[list_state->comm_list_get_index].mbufs;
     for (uint32_t i = 0; i < n; i++) {
         packet = static_cast<WritablePacket *>(Packet::make(pkts[i]));
+        uint32_t port = list_state->comm_list[list_state->comm_list_get_index].pkt_list[i].size;
+        // printf("%d\n", port);
         if (head == NULL) 
             head = PacketBatch::start_head(packet);
         else
