@@ -22,6 +22,7 @@ public:
     int initialize(ErrorHandler *) override CLICK_COLD;
     void cleanup(CleanupStage) override CLICK_COLD;
     void push_batch(int, PacketBatch*) override CLICK_COLD;
+    bool run_task(Task*) override CLICK_COLD;
 
     bool cp_ip_route(String, Route *, bool, Element *);
     void print_route(Route);
