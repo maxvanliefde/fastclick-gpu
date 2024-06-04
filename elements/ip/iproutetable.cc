@@ -100,6 +100,12 @@ IPRouteTable::cast(const char *name)
 }
 
 int
+IPRouteTable::save_to_file()
+	{
+		return 0;
+	}
+
+int
 IPRouteTable::configure(Vector<String> &conf, ErrorHandler *errh)
 {
     int r = 0, r1, eexist = 0;
@@ -118,6 +124,17 @@ IPRouteTable::configure(Vector<String> &conf, ErrorHandler *errh)
 		r = r1;
 	}
     }
+
+	click_chatter("saving in file.\n");
+
+	
+	save_to_file();
+	// ofstream fout("saved_struct.bin");
+	// fout << item.lat << ' ' << item.lon;
+    // fout.close();
+
+	click_chatter("saved.\n");
+
     if (eexist)
 	errh->warning("%d %s replaced by later versions", eexist, eexist > 1 ? "routes" : "route");
     return r;

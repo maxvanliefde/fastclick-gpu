@@ -23,6 +23,10 @@
 #include <click/ipaddress.hh>
 #include <click/straccum.hh>
 #include <click/error.hh>
+
+#include <iostream>
+#include <fstream>
+using namespace std;
 CLICK_DECLS
 
 LinearIPLookup::LinearIPLookup()
@@ -42,6 +46,24 @@ LinearIPLookup::initialize(ErrorHandler *)
     _last_addr2 = _last_addr;
 #endif
     return 0;
+}
+
+void LinearIPLookup::print_route(IPRoute route) {
+    printf("IP address: %d.%d.%d.%d\n", (route.addr >> (0 * 8)) & 0xFF, (route.addr >> (1 * 8)) & 0xFF, (route.addr >> (2 * 8)) & 0xFF, (route.addr >> (3 * 8)) & 0xFF);
+    printf("Mask: %d.%d.%d.%d\n",       (route.mask >> (0 * 8)) & 0xFF, (route.mask >> (1 * 8)) & 0xFF, (route.mask >> (2 * 8)) & 0xFF, (route.mask >> (3 * 8)) & 0xFF);
+    printf("Gateway: %d.%d.%d.%d\n",    (route.gw >> (0 * 8)) & 0xFF,   (route.gw >> (1 * 8)) & 0xFF,   (route.gw >> (2 * 8)) & 0xFF,   (route.gw >> (3 * 8)) & 0xFF);
+    printf("Port: %d\n", route.port);
+}
+
+int LinearIPLookup::save_to_file() {
+	// click_chatter("test\n");
+
+    // ofstream fout("saved_vector.bin", ios::out | ios::binary);
+    // printf("sizeof(IPRoute): %d\n", sizeof(IPRoute));
+    // fout.write(reinterpret_cast<const char*>(&_t[0]), _t.size()*sizeof(IPRoute));
+    // fout.close();
+
+	return 0;
 }
 
 bool
