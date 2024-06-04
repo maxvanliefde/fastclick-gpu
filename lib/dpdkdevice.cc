@@ -409,19 +409,37 @@ int DPDKDevice::alloc_pktmbufs(ErrorHandler* errh)
 #endif
 #else
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#define GPU_PAGE_SHIFT 16
+#define GPU_PAGE_SIZE (1UL << GPU_PAGE_SHIFT)
                         rte_pktmbuf_extmem mem;
                         mem.elt_size = MBUF_DATA_SIZE;
-                        mem.buf_len = ((size_t) get_nb_mbuf(i)) * mem.elt_size;
                         mem.buf_iova = RTE_BAD_IOVA;
-                        mem.buf_ptr = rte_malloc("extmem", mem.buf_len, 0);
-                        if (mem.buf_ptr == NULL) {
-                            errh->error("Could not allocate CPU memory for DPDK: %s", rte_strerror(rte_errno));
-                            return rte_errno;
-                        }
-                        // todo gpu device not 0
-                        if (rte_gpu_mem_register(0, mem.buf_len, mem.buf_ptr) < 0) {
-                            errh->error("Could not gpudev register the memory: %s", rte_strerror(rte_errno));
-                            return rte_errno;
+                        if (!MEMPOOL_GPU) {
+                            mem.buf_len = ((size_t) get_nb_mbuf(i)) * mem.elt_size;
+                            mem.buf_ptr = rte_malloc("extmem", mem.buf_len, 0);
+                            if (mem.buf_ptr == NULL) {
+                                errh->error("Could not allocate CPU memory for DPDK: %s", rte_strerror(rte_errno));
+                                return rte_errno;
+                            }
+                            // todo gpu device not 0
+                            if (rte_gpu_mem_register(0, mem.buf_len, mem.buf_ptr) < 0) {
+                                errh->error("Could not gpudev register the memory: %s", rte_strerror(rte_errno));
+                                return rte_errno;
+                            }
+                        } else {
+                            mem.buf_len = RTE_ALIGN_CEIL(((size_t) get_nb_mbuf(i)) * mem.elt_size, GPU_PAGE_SIZE);
+                            mem.buf_iova = RTE_BAD_IOVA;
+                            mem.buf_ptr = rte_gpu_mem_alloc(0, mem.buf_len, 0);
+                            if (mem.buf_ptr == NULL) {
+                                errh->error("Could not allocate GPU memory for DPDK: %s", rte_strerror(rte_errno));
+                                return rte_errno;
+                            }
+                            // todo gpu device not 0
+                            if (rte_extmem_register(mem.buf_ptr, mem.buf_len, NULL, mem.buf_iova, GPU_PAGE_SIZE) < 0) {
+                                errh->error("Could not gpudev register the memory: %s", rte_strerror(rte_errno));
+                                printf("rte_errno: %d\n", rte_errno);
+                                return rte_errno;
+                            }
                         }
                         if (rte_dev_dma_map(dev_info.device, mem.buf_ptr, mem.buf_iova, mem.buf_len)) {
                             errh->error("Could not map the memory: %s", rte_strerror(rte_errno));
@@ -1240,7 +1258,7 @@ int DPDKDevice::static_initialize(ErrorHandler* errh) {
             rte_exit(EXIT_FAILURE, "Cannot register mbuf field\n");
         }
         if (timestamp_dynflag < 0) {
-            RTE_ETHDEV_LOG(ERR,
+            errh->error(
                     "Failed to register mbuf flag for Rx timestamp\n");
             return -rte_errno;
         }
@@ -1604,6 +1622,8 @@ unsigned DPDKDevice::DEF_BURST_SIZE = 32;
 unsigned DPDKDevice::RING_SIZE  = 64;
 unsigned DPDKDevice::RING_POOL_CACHE_SIZE = 32;
 unsigned DPDKDevice::RING_PRIV_DATA_SIZE  = 0;
+
+bool DPDKDevice::MEMPOOL_GPU = false;
 
 bool DPDKDevice::_is_initialized = false;
 HashTable<portid_t, DPDKDevice*> DPDKDevice::_devs;

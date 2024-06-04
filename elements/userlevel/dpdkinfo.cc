@@ -47,6 +47,7 @@ int DPDKInfo::configure(Vector<String> &conf, ErrorHandler *errh) {
         .read("RING_SIZE",      DPDKDevice::RING_SIZE)
         .read("RING_POOL_CACHE_SIZE", DPDKDevice::RING_POOL_CACHE_SIZE)
         .read("RING_PRIV_DATA_SIZE",  DPDKDevice::RING_PRIV_DATA_SIZE)
+        .read("MEMPOOL_GPU", DPDKDevice::MEMPOOL_GPU)
         .complete() < 0)
         return -1;
 

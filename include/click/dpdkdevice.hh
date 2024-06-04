@@ -315,6 +315,8 @@ public:
     static unsigned RING_POOL_CACHE_SIZE;
     static unsigned RING_PRIV_DATA_SIZE;
 
+    static bool MEMPOOL_GPU;
+
     static struct rte_mempool** _pktmbuf_pools;
 
     inline struct DevInfo get_info() { return info; };
