@@ -101,10 +101,10 @@ int GPUElementCoalescent::initialize_base(ErrorHandler *errh) {
             CUDA_CHECK_RET(cuda_ret, errh);
 
             if (_zc) {
-                // Under Unified Virtual Addressing, host and device pointers are the same. 
-                cuda_ret = cudaHostAlloc((void **) &queue->h_memory, size_per_thread, cudaHostAllocMapped);
+                cuda_ret = cudaHostAlloc(&queue->h_memory, size_per_thread, cudaHostAllocMapped);
                 CUDA_CHECK_RET(cuda_ret, errh);
-                queue->d_memory = queue->h_memory;
+                cuda_ret = cudaHostGetDevicePointer(&queue->d_memory, queue->h_memory, 0);
+                CUDA_CHECK_RET(cuda_ret, errh);
             } else {
                 cuda_ret = cudaHostAlloc(&queue->h_memory, size_per_thread, cudaHostAllocDefault);
                 CUDA_CHECK_RET(cuda_ret, errh);
@@ -117,7 +117,7 @@ int GPUElementCoalescent::initialize_base(ErrorHandler *errh) {
             queue->events = new cudaEvent_t[_capacity];
             queue->batches = new PacketBatch*[_capacity];
             for (int i = 0; i < _capacity; i++) {
-                cudaEventCreateWithFlags(&queue->events[i], cudaEventDisableTiming);
+                CUDA_CHECK_RET(cudaEventCreateWithFlags(&queue->events[i], cudaEventDisableTiming), errh);
                 queue->batches[i] = nullptr;
             }
         }
@@ -159,7 +159,9 @@ void GPUElementCoalescent::push_batch(int port, PacketBatch *batch) {
     uint8_t id = _state->next_queue_put;
     _state->next_queue_put = (_state->next_queue_put + 1) % _queues_per_core;
 
-    char *h_batch_memory = queue->h_memory + (queue->put_index << _log_max_batch);
+    uint32_t offset = ((queue->put_index * _stride) << _log_max_batch);
+    char *h_batch_memory = queue->h_memory + offset;
+    char *d_batch_memory = queue->d_memory + offset;
     char *loop_ptr = h_batch_memory;
 
     FOR_EACH_PACKET(batch, p) {
@@ -187,10 +189,9 @@ void GPUElementCoalescent::push_batch(int port, PacketBatch *batch) {
     queue->batches[queue->put_index] = batch;
 
     if (_zc) {
-        wrapper_ether_mirror(h_batch_memory, n, _cuda_blocks, _cuda_threads, queue->cuda_stream);
+        wrapper_ether_mirror(d_batch_memory, n, _cuda_blocks, _cuda_threads, queue->cuda_stream);
         cudaEventRecord(queue->events[queue->put_index], queue->cuda_stream);
     } else {
-        char *d_batch_memory = queue->d_memory + (queue->put_index << _log_max_batch);
         size_t size = loop_ptr - h_batch_memory;
         cudaMemcpyAsync(d_batch_memory, h_batch_memory, size, cudaMemcpyHostToDevice, queue->cuda_stream);
         wrapper_ether_mirror(d_batch_memory, n, _cuda_blocks, _cuda_threads, queue->cuda_stream);
@@ -225,7 +226,7 @@ bool GPUElementCoalescent::run_task(Task *task) {
     }
 
     /* Copy back to the packet */
-    char *h_batch_memory = queue->h_memory + (queue->get_index << _log_max_batch);
+    char *h_batch_memory = queue->h_memory + ((queue->get_index * _stride) << _log_max_batch);
     char *loop_ptr = h_batch_memory;
     PacketBatch *batch = queue->batches[queue->get_index];
     FOR_EACH_PACKET_SAFE(batch, p) {
