@@ -72,9 +72,9 @@ int GPUIPLookupWithCopy::configure(Vector<String> &conf, ErrorHandler *errh) {
         return errh->error("TO should be greather than FROM, but from = %d and to = %d", _to, _from);
     }
     _stride = _to - _from;
-    if (_stride != 4) {
-        return errh->error("TO - FROM should be 4, but from = %d and to = %d", _to, _from);
-    }
+    // if (_stride != 4) {
+    //     return errh->error("TO - FROM should be 4, but from = %d and to = %d", _to, _from);
+    // }
 
     /* Check if power of two and compute logarithm */
     uint32_t n = _max_batch;
@@ -91,22 +91,22 @@ int GPUIPLookupWithCopy::configure(Vector<String> &conf, ErrorHandler *errh) {
         _cuda_threads = _max_batch;
     }
 
-    printf("conf.size() = %d\n", conf.size());
+    // printf("conf.size() = %d\n", conf.size());
 
     for (int i = 0; i < conf.size(); i++) {
         if (!cp_ip_route(conf[i], &route, false, this)) {
             errh->error("argument %d should be %<ADDR/MASK [GATEWAY] OUTPUT%>", i+1);
             ret = -EINVAL;
-        } // else if (route.port < 0 || route.port >= noutputs()) {
-        //     errh->error("argument %d bad OUTPUT", i+1);
-        //     ret = -EINVAL;
-        // }
+        } else if (route.port < 0 || route.port >= noutputs()) {
+            errh->error("argument %d bad OUTPUT", i+1);
+            ret = -EINVAL;
+        }
 
         // print_route(route);
 
         memcpy(&(_ip_list_cpu[i]), &route, sizeof(Route));
-        _ip_list_len = conf.size();
     }
+    _ip_list_len = conf.size();
     if (eexist)
 	errh->warning("%d %s replaced by later versions", eexist, eexist > 1 ? "routes" : "route");
     return ret;
@@ -209,7 +209,7 @@ void GPUIPLookupWithCopy::push_batch(int port, PacketBatch *batch) {
     uint8_t id = _state->next_queue_put;
     _state->next_queue_put = (_state->next_queue_put + 1) % _queues_per_core;
 
-    char *h_batch_memory = queue->h_memory + (queue->put_index << _log_max_batch);
+    char *h_batch_memory = queue->h_memory + ((queue->put_index * _stride) << _log_max_batch);
     char *loop_ptr = h_batch_memory;
 
     FOR_EACH_PACKET(batch, p) {
@@ -240,7 +240,7 @@ void GPUIPLookupWithCopy::push_batch(int port, PacketBatch *batch) {
         wrapper_iplookup(h_batch_memory, n, _cuda_blocks, _cuda_threads, queue->cuda_stream, _ip_list_gpu, _ip_list_len);
         cudaEventRecord(queue->events[queue->put_index], queue->cuda_stream);
     } else {
-        char *d_batch_memory = queue->d_memory + (queue->put_index << _log_max_batch);
+        char *d_batch_memory = queue->d_memory + ((queue->put_index * _stride) << _log_max_batch);
         size_t size = loop_ptr - h_batch_memory;
         cudaMemcpyAsync(d_batch_memory, h_batch_memory, size, cudaMemcpyHostToDevice, queue->cuda_stream);
         wrapper_iplookup(d_batch_memory, n, _cuda_blocks, _cuda_threads, queue->cuda_stream, _ip_list_gpu, _ip_list_len);
@@ -287,7 +287,7 @@ bool GPUIPLookupWithCopy::run_task(Task *task) {
     }
 
     /* Copy back to the packet */
-    char *h_batch_memory = queue->h_memory + (queue->get_index << _log_max_batch);
+    char *h_batch_memory = queue->h_memory + ((queue->get_index * _stride) << _log_max_batch);
     char *loop_ptr = h_batch_memory;
     PacketBatch *batch = queue->batches[queue->get_index];
 
@@ -299,17 +299,17 @@ bool GPUIPLookupWithCopy::run_task(Task *task) {
     // printf("Before Swap, Source: %02x:%02x:%02x:%02x\n",
     //         src[0], src[1], src[2], src[3]);
 
-    FOR_EACH_PACKET_SAFE(batch, p) {
+    // FOR_EACH_PACKET_SAFE(batch, p) {
         // WritablePacket *q = p->uniqueify();
         // unsigned char *data = q->data();
         // memcpy(data + _from, loop_ptr, _stride);
 
-        uint32_t temp = *tmp;
+        // uint32_t temp = *tmp;
         //printf("port: %d\n", temp);
-        tmp++;
+        // tmp++;
         // loop_ptr += _stride;
         // p = q;
-    }
+    // }
 
     output_push_batch(0, batch);
     queue->batches[queue->get_index] = nullptr;
