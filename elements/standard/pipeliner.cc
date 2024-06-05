@@ -36,7 +36,7 @@ Pipeliner::~Pipeliner()
 
 bool
 Pipeliner::get_spawning_threads(Bitvector& b, bool, int port) {
-    unsigned int thisthread = router()->home_thread_id(this);
+    unsigned int thisthread = _home_thread_id == -1 ? router()->home_thread_id(this) : _home_thread_id;
     b[thisthread] = 1;
     return false;
 }
@@ -161,6 +161,7 @@ Pipeliner::initialize(ErrorHandler *errh)
     }
 
     ScheduleInfo::initialize_task(this, &_task, _active, errh);
+    if (_home_thread_id != -1) _task.move_thread(_home_thread_id);
 
     return 0;
 }
