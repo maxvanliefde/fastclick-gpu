@@ -5,6 +5,10 @@
 extern "C" {
 #endif
 
+#define CRC_TABLE_LENGTH 256
+
+void gen_crc_table(uint32_t *crc_table);
+
 uint32_t update_crc(uint32_t crc_accum, const char *data_blk_ptr,
 		    int data_blk_size);
 

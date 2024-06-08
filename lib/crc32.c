@@ -40,10 +40,10 @@
 
 #define POLYNOMIAL 0x04c11db7L
 
-static uint32_t crc_table[256];
+static uint32_t crc_table[CRC_TABLE_LENGTH];
 
-static void
-gen_crc_table(void)
+void
+gen_crc_table(uint32_t *crc_table)
  /* generate the table of CRC remainders for all possible bytes */
  { register int i, j;  register uint32_t crc_accum;
    for ( i = 0;  i < 256;  i++ )
@@ -71,7 +71,7 @@ update_crc(uint32_t crc_accum,
 
   if(initialized == 0){
     initialized = 1;
-    gen_crc_table();
+    gen_crc_table(crc_table);
   }
 
   for ( j = 0;  j < data_blk_size;  j++ ){
