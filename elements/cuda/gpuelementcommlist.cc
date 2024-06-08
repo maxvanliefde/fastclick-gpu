@@ -9,7 +9,7 @@
 CLICK_DECLS
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 
-GPUElementCommList::GPUElementCommList() : _state(), _capacity(4096), _max_batch(1024), _blocks_per_q(1), _block(false), _verbose(false), _lists_per_core(1) {};
+GPUElementCommList::GPUElementCommList() : _state(), _capacity(4096), _max_batch(1024), _blocks_per_q(1), _block(false), _verbose(false), _lists_per_core(1), _persistent_kernel(true) {};
 
 int GPUElementCommList::configure_base(Vector<String> &conf, ErrorHandler *errh) {
     if (Args(conf, this, errh)
@@ -20,6 +20,7 @@ int GPUElementCommList::configure_base(Vector<String> &conf, ErrorHandler *errh)
         .read_p("BLOCKING", _block)
         .read("VERBOSE", _verbose)
         .read("LISTS_PER_CORE", _lists_per_core)
+        .read_p("PERSISTENT_KERNEL", _persistent_kernel)
         .consume() < 0) 
     {
         return -1;
@@ -70,8 +71,10 @@ int GPUElementCommList::initialize_base(ErrorHandler *errh, base_wrapper_persist
 
             cudaError_t cuda_ret = cudaStreamCreate(&s.comm_lists[list_id].cuda_stream);
             CUDA_CHECK(cuda_ret, errh);
-            launch_kernel(s.comm_lists[list_id].comm_list, s.comm_lists[list_id].comm_list_size, _blocks_per_q, _max_batch, s.comm_lists[list_id].cuda_stream);
-            CUDA_CHECK(cudaGetLastError(), errh);
+            if (_persistent_kernel) {
+                launch_kernel(s.comm_lists[list_id].comm_list, s.comm_lists[list_id].comm_list_size, _blocks_per_q, _max_batch, s.comm_lists[list_id].cuda_stream);
+                CUDA_CHECK(cudaGetLastError(), errh);
+            }
         }
     }
 
@@ -149,7 +152,12 @@ void GPUElementCommList::push_batch(int port, PacketBatch *batch) {
         batch->kill();
         return;
     }
-    rte_wmb();
+
+    if (likely(_persistent_kernel)) {
+        rte_wmb();
+    } else {
+        wrapper_ether_mirror(&list_state->comm_list[list_state->comm_list_put_index], _max_batch);
+    }
 
     list_state->comm_list_put_index = (list_state->comm_list_put_index + 1) % list_state->comm_list_size;
     if (!_state->task->scheduled())

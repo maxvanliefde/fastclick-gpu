@@ -51,6 +51,7 @@ protected:
     uint16_t _blocks_per_q;
     uint16_t _max_batch;
     uint8_t _lists_per_core;
+    bool _persistent_kernel;
     bool _block;
     bool _verbose;
 };
