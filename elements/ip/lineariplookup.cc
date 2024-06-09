@@ -26,6 +26,7 @@
 
 #include <iostream>
 #include <fstream>
+#include <sstream>
 using namespace std;
 CLICK_DECLS
 
@@ -55,15 +56,70 @@ void LinearIPLookup::print_route(IPRoute route) {
     printf("Port: %d\n", route.port);
 }
 
+int
+LinearIPLookup::configure(Vector<String> &conf, ErrorHandler *errh)
+{
+    // click_chatter("custom config");
+    read_from_file();
+    return 0;
+}
+
 int LinearIPLookup::save_to_file() {
-	// click_chatter("test\n");
-
+    
+	// click_chatter("saving in file.\n");
     // ofstream fout("saved_vector.bin", ios::out | ios::binary);
-    // printf("sizeof(IPRoute): %d\n", sizeof(IPRoute));
-    // fout.write(reinterpret_cast<const char*>(&_t[0]), _t.size()*sizeof(IPRoute));
+    // fout<<_t.size()<<endl;
+    // for (int i = 0; i < _t.size(); i++) {
+    //     print_route(_t[i]);
+    //     fout<<_t[i].addr<<endl;
+    //     fout<<_t[i].mask<<endl;
+    //     fout<<_t[i].gw<<endl;
+    //     fout<<_t[i].port<<endl;
+    //     fout<<_t[i].extra<<endl;
+    // }
     // fout.close();
-
 	return 0;
+}
+
+int LinearIPLookup::read_from_file() {
+	click_chatter("reading from file.\n");
+    
+    ifstream fin("saved_vector.bin", ios::in | ios::binary);
+    std::string line;
+    std:getline(fin, line);
+    uint32_t size = std::stoul(line);
+    printf("size: %u\n", size);
+    printf("_t.size: %d\n", _t.size());
+    _t.resize(size);
+    printf("_t.size: %d\n", _t.size());
+    for(int i = 0; i < size; i++) {
+        std::getline(fin, line);
+        uint32_t addr = std::stoul(line);
+        _t[i].addr = addr;
+
+        std::getline(fin, line);
+        uint32_t mask = std::stoul(line);
+        _t[i].mask = mask;
+
+        std::getline(fin, line);
+        uint32_t gw = std::stoul(line);
+        _t[i].gw = gw;
+
+        std::getline(fin, line);
+        uint32_t port = std::stoul(line);
+        _t[i].port = port;
+
+        std::getline(fin, line);
+        uint32_t extra = std::stoul(line);
+        _t[i].extra = extra;
+
+        print_route(_t[i]);
+
+    }
+    fin.close();
+
+    return 0;
+
 }
 
 bool
@@ -163,6 +219,14 @@ LinearIPLookup::add_route(const IPRoute &r, bool allow_replace, IPRoute* replace
 #endif
 
     check();
+
+
+
+
+	
+	save_to_file();
+    // read_from_file();
+
     return 0;
 }
 

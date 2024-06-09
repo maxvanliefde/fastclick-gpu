@@ -188,7 +188,7 @@ struct IPRoute {
 class IPRouteTable : public BatchElement { public:
 
     void* cast(const char*);
-    int configure(Vector<String>&, ErrorHandler*) CLICK_COLD;
+    virtual int configure(Vector<String>&, ErrorHandler*) CLICK_COLD;
     void add_handlers() CLICK_COLD;
 
     virtual int add_route(const IPRoute& route, bool allow_replace, IPRoute* replaced_route, ErrorHandler* errh);

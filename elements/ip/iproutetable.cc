@@ -125,16 +125,6 @@ IPRouteTable::configure(Vector<String> &conf, ErrorHandler *errh)
 	}
     }
 
-	click_chatter("saving in file.\n");
-
-	
-	save_to_file();
-	// ofstream fout("saved_struct.bin");
-	// fout << item.lat << ' ' << item.lon;
-    // fout.close();
-
-	click_chatter("saved.\n");
-
     if (eexist)
 	errh->warning("%d %s replaced by later versions", eexist, eexist > 1 ? "routes" : "route");
     return r;
