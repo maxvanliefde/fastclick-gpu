@@ -100,7 +100,10 @@ class LinearIPLookup : public IPRouteTable { public:
     int remove_route(const IPRoute&, IPRoute*, ErrorHandler *);
     int lookup_route(IPAddress, IPAddress&) const;
     void print_route(IPRoute);
+    int configure(Vector<String>&, ErrorHandler *);
     int save_to_file();
+    int read_from_file();
+
     
     String dump_routes();
 
