@@ -5,6 +5,8 @@
 #include <cuda_runtime.h>
 #include <cuda_runtime_api.h>
 #include <cuda_profiler_api.h>
+#include <rte_gpudev.h>
+
 
 #ifdef HAVE_CUDA
 void wrapper_setcrc32_commlist(struct rte_gpu_comm_list *comm_list_item, uint32_t *crc_table, int cuda_blocks, int cuda_threads, cudaStream_t stream);

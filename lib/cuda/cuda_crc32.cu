@@ -1,7 +1,12 @@
 #include <stdio.h>
 
-#include <click/cuda/kernelethermirror.hh>
+#include <click/cuda/cuda_crc32.hh>
 #include <rte_ether.h>
+#include <cooperative_groups.h>
+#include <cooperative_groups/scan.h>
+#include <cub/block/block_scan.cuh>
+
+using namespace cooperative_groups;
 
 #ifdef HAVE_CUDA
 
@@ -107,14 +112,14 @@ void wrapper_setcrc32_persistent(struct rte_gpu_comm_list *comm_list, uint32_t c
 
 /* COALESCENT */
 
-__global__ void kernel_crc32_coalescent(char *batch_memory, uint32_t n_pkts, uint32_t pkt_size, uint32_t *crc_table) {
+__global__ void kernel_crc32_coalescent(char *batch_memory, uint32_t n_pkts, uint32_t max_pkt_size, uint32_t *crc_table) {
     int pkt_id = blockIdx.x * blockDim.x + threadIdx.x;
 
     /* Workload */
     if (pkt_id < n_pkts) {
-        char *data = batch_memory + pkt_size * pkt_id;
-
+        uint32_t pkt_size = ((uint32_t *) batch_memory)[pkt_id];
         uint32_t size = pkt_size - RTE_ETHER_CRC_LEN;
+        char *data = batch_memory + (n_pkts * sizeof(uint32_t)) + (max_pkt_size * pkt_id);
 
         int i, j;
         uint32_t crc_accum = 0xffffffff;
@@ -123,14 +128,16 @@ __global__ void kernel_crc32_coalescent(char *batch_memory, uint32_t n_pkts, uin
             crc_accum = ( crc_accum << 8 ) ^ crc_table[i];
         }
 
-        memcpy((void *) (data), &crc_accum, RTE_ETHER_CRC_LEN);
+        char *crc_pkt = batch_memory + (n_pkts * (max_pkt_size + sizeof(uint32_t))) + (RTE_ETHER_CRC_LEN * pkt_id);
+
+        memcpy((void *) (crc_pkt), &crc_accum, RTE_ETHER_CRC_LEN);
     }
 
     __syncthreads();
 }
 
-void wrapper_crc32_coalescent(char *batch_memory, uint32_t n_pkts, uint32_t pkt_size, uint32_t *crc_table, int blocks, int threads, cudaStream_t stream) {
-    kernel_crc32_coalescent <<< blocks, threads, 0, stream >>> (batch_memory, n_pkts, pkt_size, crc_table);
+void wrapper_crc32_coalescent(char *batch_memory, uint32_t n_pkts, uint32_t max_pkt_size, uint32_t *crc_table, int blocks, int threads, cudaStream_t stream) {
+    kernel_crc32_coalescent <<< blocks, threads, 0, stream >>> (batch_memory, n_pkts, max_pkt_size, crc_table);
 }
 
 
