@@ -10,6 +10,7 @@
 #ifdef HAVE_CUDA
 
 void wrapper_ether_mirror(char *batch_memory, uint32_t n_pkts, int blocks, int threads, cudaStream_t stream);
+void wrapper_ether_mirror_graph(char *batch_memory, uint32_t *n_pkts, int blocks, int threads, cudaStream_t stream);
 
 #endif /* HAVE_CUDA */
 
