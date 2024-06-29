@@ -74,8 +74,9 @@ void GPUSetCRC32Coalescent::push_batch(int port, PacketBatch *batch) {
             }
             return p->put(4);
         }, batch, [this] (Packet* p) {
-            click_chatter("%p{element} Warning: received a packet of size %d, but the max packet size is %d. "
-                "Dropped it", this, p->length(), _max_pkt_size);
+            if ((unlikely(_verbose)))
+                click_chatter("%p{element} Warning: received a packet of size %d, but the max packet size is %d. "
+                    "Dropped it", this, p->length(), _max_pkt_size);
         });
 
     // check if packets remain
