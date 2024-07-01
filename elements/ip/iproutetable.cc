@@ -100,12 +100,6 @@ IPRouteTable::cast(const char *name)
 }
 
 int
-IPRouteTable::save_to_file()
-	{
-		return 0;
-	}
-
-int
 IPRouteTable::configure(Vector<String> &conf, ErrorHandler *errh)
 {
     int r = 0, r1, eexist = 0;
@@ -124,7 +118,6 @@ IPRouteTable::configure(Vector<String> &conf, ErrorHandler *errh)
 		r = r1;
 	}
     }
-
     if (eexist)
 	errh->warning("%d %s replaced by later versions", eexist, eexist > 1 ? "routes" : "route");
     return r;

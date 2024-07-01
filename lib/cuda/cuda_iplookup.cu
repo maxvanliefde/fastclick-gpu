@@ -5,6 +5,33 @@
 
 #ifdef HAVE_CUDA
 
+__device__ bool matches_prefix_coal(uint32_t addr1, uint32_t addr2, uint32_t mask)
+{
+    return ((addr1 ^ addr2) & mask) == 0;
+}
+
+__device__ uint32_t lookup_entry_coal(uint32_t a, RouteGPU *ip_list, uint32_t len) 
+{
+    uint64_t found = 0;
+    for (int i = 0; i < len; i++) {
+        RouteGPU r = ip_list[i];
+        bool b = matches_prefix_coal(a, r.addr, r.mask);
+        if (b) found = i;
+        
+	}
+    return found;
+}
+
+__device__ uint32_t lookup_route_coal(uint32_t a, RouteGPU *ip_list, uint32_t len) 
+{
+    int ei = lookup_entry_coal(a, ip_list, len);
+    
+    if (ei >= 0) {
+	return ip_list[ei].port;
+    } else
+	return -1;
+}
+
 __device__ uint8_t longest_match2(uint32_t addr1, uint32_t addr2) {
     uint8_t len_match = 0;
     for (uint8_t j = 0; j < 4; j++){
@@ -36,76 +63,14 @@ __global__ void kernel_iplookup(char *batch_memory, uint32_t n_pkts, RouteGPU *i
     if (pkt_id < n_pkts) {
         char *data = batch_memory + stride * pkt_id;
         src = (uint8_t *) data;
-        // dst = (uint8_t *) data + 6;
-        // uint8_t* dst2 = (uint8_t *) data + 4;
-        // printf("src: %d\n", src);
-        // printf("dst: %d\n", dst);
-
-        /* Verify source and dest of ethernet addresses */
-        // printf("Before Swap, Source: %02x:%02x:%02x:%02x:%02x:%02x Dest: %02x:%02x:%02x:%02x:%02x:%02x\n",
-        //     src[0], src[1], src[2], src[3], src[4], src[5], 
-        //     dst[0], dst[1], dst[2], dst[3], dst[4], dst[5]);
-
-        /* Verify source and dest of internet addresses */
-        // printf("gpu: Before Swap, Source: %02x:%02x:%02x:%02x\n",
-        //     src[0], src[1], src[2], src[3]);
-
-        // uint32_t *src_addr = (uint32_t *) (data);
 
 
         uint32_t *dst_addr = (uint32_t *) (data);
 
-        uint8_t longest = 0;
-        uint32_t port = 0;
-
-        for (uint32_t i = 0; i < len; i++) {
-            uint32_t input = (*dst_addr) & ip_list[i].mask;
-            // printf("idk man %d\n", input);
-
-            uint8_t len1 = longest_match2(input, ip_list[i].addr);
-            if (len1 > longest) {
-                port = ip_list[i].port;
-                longest = len1;
-                index = i;
-                // printf("index: %d\n", index);
-                // src[0] = 0;
-            }
-
-
-        }
-
-        // uint32_t *test = (uint32_t *) data;
-        // printf("idk: %d\n", hello);
-        // *test = hello;
-        // *test = port;
-        // hello++;
-        // printf("hello %d\n", hello);
-
-
-        // printf("blockid %d\n", blockIdx.x);
-        // printf("index %d\n", index);
-        ip_list[index].port += 1;
-        uint8_t hello = (uint8_t) ip_list[index].port;
-        // src[0] = i;
-
-        // src[0] = 0;
-        
-
-
-
-        // printf("Before Swap, Source: %02x\n",
-        //     (uint32_t) src);
-
-        /* Swap addresses */
-        // uint8_t j;
-        // for (j = 0; j < 6; j++) tmp[j] = src[j];
-        // for (j = 0; j < 6; j++) src[j] = dst[j];
-        // for (j = 0; j < 6; j++) dst[j] = tmp[j];
-
-        /* Verify source and dest of ethernet addresses */
-        // printf("After Swap, Source: %02x:%02x:%02x:%02x:%02x:%02x Dest: %02x:%02x:%02x:%02x:%02x:%02x\n",
-        //     src[0], src[1], src[2], src[3], src[4], src[5], 
-        //     dst[0], dst[1], dst[2], dst[3], dst[4], dst[5]);
+        // printf("addr: %d\n", *dst_addr);
+        // printf("IP address: %d.%d.%d.%d\n", (*dst_addr >> (0 * 8)) & 0xFF, (*dst_addr >> (1 * 8)) & 0xFF, (*dst_addr >> (2 * 8)) & 0xFF, (*dst_addr >> (3 * 8)) & 0xFF);
+        uint32_t port = lookup_route_coal((uint32_t) *dst_addr, ip_list, len);
+        src[0] = port;
     }
 
     __syncthreads();

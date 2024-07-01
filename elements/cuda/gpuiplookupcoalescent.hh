@@ -26,10 +26,25 @@ public:
 
     bool cp_ip_route(String, Route *, bool, Element *);
     void print_route(Route);
+    int read_from_file();
 
     uint32_t _ip_list_len;
     Route *_ip_list_cpu;
     RouteGPU *_ip_list_gpu;
+
+    Vector<Route> _ip_vector_cpu;
+
+    /* Parameters */
+    uint16_t _from, _to, _stride;
+    uint32_t _capacity;
+    uint16_t _max_batch;
+    uint8_t _log_max_batch;
+    bool _block;
+    bool _verbose;
+    bool _zc;
+    bool _copyback;
+    uint8_t _queues_per_core;
+    int _cuda_threads, _cuda_blocks;
 };
 
 CLICK_ENDDECLS

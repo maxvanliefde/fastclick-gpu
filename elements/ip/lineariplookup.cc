@@ -56,10 +56,9 @@ void LinearIPLookup::print_route(IPRoute route) {
     printf("Port: %d\n", route.port);
 }
 
-int
-LinearIPLookup::configure(Vector<String> &conf, ErrorHandler *errh)
+int LinearIPLookup::configure(Vector<String> &conf, ErrorHandler *errh)
 {
-    // click_chatter("custom config");
+    click_chatter("custom config");
     read_from_file();
     return 0;
 }
@@ -67,10 +66,10 @@ LinearIPLookup::configure(Vector<String> &conf, ErrorHandler *errh)
 int LinearIPLookup::save_to_file() {
     
 	// click_chatter("saving in file.\n");
-    // ofstream fout("saved_vector.bin", ios::out | ios::binary);
+    // ofstream fout("saved_vector6000.bin", ios::out | ios::binary);
     // fout<<_t.size()<<endl;
     // for (int i = 0; i < _t.size(); i++) {
-    //     print_route(_t[i]);
+    //     // print_route(_t[i]);
     //     fout<<_t[i].addr<<endl;
     //     fout<<_t[i].mask<<endl;
     //     fout<<_t[i].gw<<endl;
@@ -82,16 +81,16 @@ int LinearIPLookup::save_to_file() {
 }
 
 int LinearIPLookup::read_from_file() {
-	click_chatter("reading from file.\n");
+	// click_chatter("reading from file.\n");
     
-    ifstream fin("saved_vector.bin", ios::in | ios::binary);
+    ifstream fin("saved_vector6000.bin", ios::in | ios::binary);
     std::string line;
     std:getline(fin, line);
     uint32_t size = std::stoul(line);
-    printf("size: %u\n", size);
-    printf("_t.size: %d\n", _t.size());
+    // printf("size: %u\n", size);
+    // printf("_t.size: %d\n", _t.size());
     _t.resize(size);
-    printf("_t.size: %d\n", _t.size());
+    // printf("_t.size: %d\n", _t.size());
     for(int i = 0; i < size; i++) {
         std::getline(fin, line);
         uint32_t addr = std::stoul(line);
@@ -113,7 +112,7 @@ int LinearIPLookup::read_from_file() {
         uint32_t extra = std::stoul(line);
         _t[i].extra = extra;
 
-        print_route(_t[i]);
+        // print_route(_t[i]);
 
     }
     fin.close();
@@ -158,12 +157,12 @@ LinearIPLookup::check() const
 
     // caches point to the right place
     if (_last_addr && lookup_entry(_last_addr) != _last_entry) {
-	// click_chatter("%s: bad cache entry for %s", declaration().c_str(), _last_addr.unparse().c_str());
+	click_chatter("%s: bad cache entry for %s", declaration().c_str(), _last_addr.unparse().c_str());
 	ok = false;
     }
 #ifdef IP_RT_CACHE2
     if (_last_addr2 && lookup_entry(_last_addr2) != _last_entry2) {
-	// click_chatter("%s: bad cache entry for %s", declaration().c_str(), _last_addr2.unparse().c_str());
+	click_chatter("%s: bad cache entry for %s", declaration().c_str(), _last_addr2.unparse().c_str());
 	ok = false;
     }
 #endif
@@ -219,14 +218,6 @@ LinearIPLookup::add_route(const IPRoute &r, bool allow_replace, IPRoute* replace
 #endif
 
     check();
-
-
-
-
-	
-	save_to_file();
-    // read_from_file();
-
     return 0;
 }
 
@@ -264,14 +255,17 @@ LinearIPLookup::remove_route(const IPRoute& route, IPRoute* old_route, ErrorHand
 int
 LinearIPLookup::lookup_entry(IPAddress a) const
 {
-    for (int i = 0; i < _t.size(); i++)
+    for (int i = 0; i < _t.size(); i++){
+    // printf("i: %d\n", i);
 	if (_t[i].contains(a)) {
+        // printf("hey\n\n");
 	    int found = i;
 	    for (int j = _t[i].extra; j < _t.size(); j++)
 		if (_t[j].contains(a) && _t[j].mask_as_specific(_t[found].mask))
 		    found = j;
 	    return found;
 	}
+    }
     return -1;
 }
 

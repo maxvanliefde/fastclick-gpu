@@ -3,12 +3,16 @@
 #include <click/standard/scheduleinfo.hh>
 #include <click/args.hh>
 
+#include <iostream>
+#include <fstream>
+#include <sstream>
+
 #include "gpuiplookupcommlist.hh"
 
 CLICK_DECLS
 
 
-GPUIPLookup::GPUIPLookup() : _ip_list_len(1), _ip_list_cpu(), _ip_list_gpu() {};
+GPUIPLookup::GPUIPLookup() : _ip_list_len(1), _ip_list_cpu(), _ip_list_gpu(), _capacity(4096), _max_batch(1024), _blocks_per_q(1), _block(false), _verbose(false), _lists_per_core(1), _persistent_kernel(true) {};
 
 bool GPUIPLookup::cp_ip_route(String s, Route *r_store, bool remove_route, Element *context)
 {
@@ -16,7 +20,6 @@ bool GPUIPLookup::cp_ip_route(String s, Route *r_store, bool remove_route, Eleme
     if (!IPPrefixArg(true).parse(cp_shift_spacevec(s), r.addr, r.mask, context))
 	return false;
     r.addr &= r.mask;
-
 
     String word = cp_shift_spacevec(s);
     if (word == "-")
@@ -44,43 +47,67 @@ void GPUIPLookup::print_route(Route route) {
     printf("Port: %d\n", route.port);
 }
 
+int GPUIPLookup::read_from_file() {
+	click_chatter("reading from file.\n");
+    
+    std::ifstream fin("/etinfo/users/2021/rvanhauwaert/fastclick-gpu/saved_vector6000.bin", std::ios::in | std::ios::binary);
+    std::string line;
+    std:getline(fin, line);
+    uint32_t size = std::stoul(line);
+    _ip_vector_cpu.resize(size);
+    for(int i = 0; i < size; i++) {
+        std::getline(fin, line);
+        uint32_t addr = std::stoul(line);
+        _ip_vector_cpu[i].addr = addr;
+
+        std::getline(fin, line);
+        uint32_t mask = std::stoul(line);
+        _ip_vector_cpu[i].mask = mask;
+
+        std::getline(fin, line);
+        uint32_t gw = std::stoul(line);
+        _ip_vector_cpu[i].gw = gw;
+
+        std::getline(fin, line);
+        uint32_t port = std::stoul(line);
+        _ip_vector_cpu[i].port = port;
+
+        std::getline(fin, line);
+        uint32_t extra = std::stoul(line);
+        _ip_vector_cpu[i].extra = extra;
+    }
+    fin.close();
+
+    return 0;
+
+}
+
 int GPUIPLookup::configure(Vector<String> &conf, ErrorHandler *errh) {
 
     int ret = 0, r1, eexist = 0;
     struct Route route;
 
-    _verbose = false;
-
-    _ip_list_cpu = (Route*) malloc(sizeof(Route) * conf.size());
-
     if (Args(conf, this, errh)
         .bind(conf)
         .read_p("CAPACITY", _capacity)
+        .read_p("MAX_BATCH", _max_batch)
+        .read_p("THREAD_BLOCKS_PER_QUEUE", _blocks_per_q)
+        .read_p("BLOCKING", _block)
+        .read("VERBOSE", _verbose)
         .read("LISTS_PER_CORE", _lists_per_core)
+        .read_p("PERSISTENT_KERNEL", _persistent_kernel)
         .consume() < 0)
     {
         return -1;
     }
+
+    // printf("cap: %d\n", _capacity);
+    // printf("lpc: %d\n", _lists_per_core);
+
+    read_from_file();
     
-    // printf("capacity: %d\n", _capacity);
-
-
-    for (int i = 0; i < conf.size(); i++) {
-        if (!cp_ip_route(conf[i], &route, false, this)) {
-            errh->error("argument %d should be %<ADDR/MASK [GATEWAY] OUTPUT%>", i+1);
-            ret = -EINVAL;
-        } //else if (route.port < 0 || route.port >= noutputs()) {
-        //     errh->error("argument %d bad OUTPUT", i+1);
-        //     ret = -EINVAL;
-        // }
-
-        // print_route(route);
-
-        memcpy(&(_ip_list_cpu[i]), &route, sizeof(Route));
-        _ip_list_len = conf.size();
-    }
-    if (eexist)
-	errh->warning("%d %s replaced by later versions", eexist, eexist > 1 ? "routes" : "route");
+    _ip_list_len = _ip_vector_cpu.size();
+    uint32_t size =_ip_list_len * sizeof(Route);
 
     printf("done\n");
     return ret;
@@ -90,7 +117,7 @@ int GPUIPLookup::initialize(ErrorHandler *errh) {
     _usable_threads = get_pushing_threads();
     
     cudaMalloc(&_ip_list_gpu, _ip_list_len*sizeof(RouteGPU));
-    cudaMemcpy(_ip_list_gpu, _ip_list_cpu, _ip_list_len*sizeof(RouteGPU), cudaMemcpyHostToDevice);
+    cudaMemcpy(_ip_list_gpu, _ip_vector_cpu.data(), _ip_list_len*sizeof(RouteGPU), cudaMemcpyHostToDevice);
 
 
     for (int th_id = 0; th_id < master()->nthreads(); th_id++) {
@@ -122,19 +149,97 @@ int GPUIPLookup::initialize(ErrorHandler *errh) {
 
             cudaError_t cuda_ret = cudaStreamCreate(&s.comm_lists[list_id].cuda_stream);
             CUDA_CHECK(cuda_ret, errh);
-            wrapper_ip_lookup_persistent(s.comm_lists[list_id].comm_list, s.comm_lists[list_id].comm_list_size, _blocks_per_q, _max_batch, s.comm_lists[list_id].cuda_stream, _ip_list_gpu, _ip_list_len);
-            CUDA_CHECK(cudaGetLastError(), errh);
+            if (_persistent_kernel) {
+                wrapper_ip_lookup_persistent(s.comm_lists[list_id].comm_list, s.comm_lists[list_id].comm_list_size, _blocks_per_q, _max_batch, s.comm_lists[list_id].cuda_stream, _ip_list_gpu, _ip_list_len);
+                CUDA_CHECK(cudaGetLastError(), errh);
+            }
         }
     }
 
     if (_verbose) {
-        errh->message("%s{element}: %d usable threads, %d queue per thread, %d batch per queue.",
+        click_chatter("%p{element}: %d usable threads, %d list%s per thread, %d batch per list.",
             this,
-            _usable_threads.weight(), 1, _capacity
+            _usable_threads.weight(), _lists_per_core, _lists_per_core == 1 ? "" : "s", _capacity
         );
+        for (int th_id = 0; th_id < master()->nthreads(); th_id++)
+            if (_usable_threads[th_id])
+                click_chatter("%p{element}: Pipeline in thread %d", this, th_id);
     }
 
     return 0;
+}
+
+#if HAVE_BATCH
+
+/* Sends the batch to the GPU */
+void GPUIPLookup::push_batch(int port, PacketBatch *batch) {
+    ErrorHandler *errh = ErrorHandler::default_handler();
+    enum rte_gpu_comm_list_status status;
+    int ret;
+
+    unsigned n = batch->count();
+
+    if (unlikely(n > _max_batch)) {
+        PacketBatch* todrop;
+        batch->split(_max_batch, todrop, true);
+        todrop->kill();
+        if (unlikely(_verbose)) 
+            click_chatter("%p{element} Warning: a batch of size %d has been given, but the max size is %d. "
+            "Dropped %d packets", this, n, _max_batch, n-_max_batch);
+        n = batch->count();
+    }
+
+    rte_mbuf *array[n];
+
+    int i = 0;
+    FOR_EACH_PACKET(batch, p)
+        array[i++] = reinterpret_cast<struct rte_mbuf *>(p);
+
+    // populate lists in round robin fashion
+    struct comm_list_state *list_state = &_state->comm_lists[_state->next_list_put];
+    _state->next_list_put = (_state->next_list_put + 1) % _lists_per_core;
+
+    do {
+        ret = rte_gpu_comm_get_status(&list_state->comm_list[list_state->comm_list_put_index], &status);
+        if (ret != 0) {
+            errh->error("rte_gpu_comm_get_status returned error %d\n", ret);
+            batch->kill();
+            return;
+        }
+
+        if (status != RTE_GPU_COMM_LIST_FREE) {
+            if (_block) {
+                _state->task->reschedule();
+                if (unlikely(_verbose))
+                    click_chatter("%p{element} Congestion: List is not free!" 
+                        "GPU processing is likely too slow, or the list is too small, consider increasing CAPACITY", this);
+            } else {
+                batch->kill();
+                if (unlikely(_verbose))
+                    click_chatter("%p{element} Dropped %d packets: List is not free!" 
+                        "GPU processing is likely too slow, or the list is too small, consider increasing CAPACITY", this, n);
+
+                return;
+            }
+        }
+    } while(unlikely(status != RTE_GPU_COMM_LIST_FREE));
+    
+    ret = rte_gpu_comm_populate_list_pkts(&list_state->comm_list[list_state->comm_list_put_index], array, n);     // includes call to gpu_wmb
+    if (ret != 0) {
+        errh->error("rte_gpu_comm_populate_list_pkts returned error %d (size was %d )\n", ret, n);
+        batch->kill();
+        return;
+    }
+
+    if (likely(_persistent_kernel)) {
+        rte_wmb();
+    } else {
+        wrapper_ip_lookup(&list_state->comm_list[list_state->comm_list_put_index], _max_batch, _ip_list_gpu, _ip_list_len);
+    }
+
+    list_state->comm_list_put_index = (list_state->comm_list_put_index + 1) % list_state->comm_list_size;
+    if (!_state->task->scheduled())
+        _state->task->reschedule();
 }
 
 bool GPUIPLookup::run_task(Task *task) {
@@ -181,10 +286,49 @@ bool GPUIPLookup::run_task(Task *task) {
     return true;
 }
 
+void GPUIPLookup::run_timer(Timer *timer) {
+    _state->task->reschedule();
+    timer->schedule_now();
+}
+
+#endif
+
 void GPUIPLookup::cleanup(CleanupStage cs) {
     cleanup_base(cs);
     free(_ip_list_cpu);
     cudaFree(_ip_list_gpu);
+
+    ErrorHandler *errh = ErrorHandler::default_handler();
+
+    for (int i = 0; i < _state.weight(); i++) {
+        if (!_usable_threads[i])
+            continue;
+
+        state &s = _state.get_value(i);
+
+        /* Finish all the tasks polling on the GPU communication list */
+        delete s.task;
+        s.task = nullptr;
+
+        /* Terminating CUDA kernels */
+        int ret;
+        for (uint8_t list_id = 0; list_id < _lists_per_core; list_id++) {
+            for (int index = 0; index < s.comm_lists[list_id].comm_list_size; index++) {
+                ret = rte_gpu_comm_set_status(&s.comm_lists[list_id].comm_list[index], RTE_GPU_COMM_LIST_ERROR);
+                if (ret != 0) {
+                    errh->error(
+                        "Can't set status RTE_GPU_COMM_LIST_ERROR on item %d for thread i."
+                        "This probably means that the GPU kernel associated will never finish!", index, i);
+                }
+            }
+            CUDA_CHECK(cudaStreamSynchronize(s.comm_lists[list_id].cuda_stream), errh);
+
+            /* Destroy the stream and the communication list */
+            cudaStreamDestroy(s.comm_lists[list_id].cuda_stream);
+            // rte_gpu_comm_destroy_list(s.comm_lists[list_id].comm_list, s.comm_lists[list_id].comm_list_size);    // does not work
+        }
+        delete[] s.comm_lists;
+    }
 }
 
 ELEMENT_REQUIRES(batch cuda)

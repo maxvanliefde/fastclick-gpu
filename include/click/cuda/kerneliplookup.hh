@@ -10,6 +10,7 @@
 
 #ifdef HAVE_CUDA
 
+void wrapper_ip_lookup(struct rte_gpu_comm_list *comm_list_item, int cuda_threads, RouteGPU *ip_list, uint32_t len);
 void wrapper_ip_lookup_persistent(struct rte_gpu_comm_list *comm_list, uint32_t comm_list_size, int cuda_blocks, int cuda_threads, cudaStream_t stream, RouteGPU *ip_list, uint32_t len);
 
 
