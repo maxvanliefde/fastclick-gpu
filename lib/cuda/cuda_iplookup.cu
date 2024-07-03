@@ -18,7 +18,7 @@ __device__ uint32_t lookup_entry_coal(uint32_t a, RouteGPU *ip_list, uint32_t le
         bool b = matches_prefix_coal(a, r.addr, r.mask);
         if (b) found = i;
         
-	}
+        }
     return found;
 }
 
@@ -48,12 +48,10 @@ __device__ uint8_t longest_match2(uint32_t addr1, uint32_t addr2) {
     return len_match;
 }
 
-__global__ void kernel_iplookup(char *batch_memory, uint32_t n_pkts, RouteGPU *ip_list, uint32_t len) {
+__global__ void kernel_iplookup(char *batch_memory, uint32_t n_pkts, RouteGPU *ip_list, uint32_t len) {    
     int pkt_id = blockIdx.x * blockDim.x + threadIdx.x;
-    // printf("griddim %d blockdim %d threadidx %d", gridDim.x, blockDim.x, threadIdx.x);
-    uint8_t *src, *dst, tmp[6];
-    int stride = 8;
-    int index = 0;
+    uint8_t *src;
+    int stride = 4;
 
     
 

@@ -12,7 +12,7 @@
 
 CLICK_DECLS
 
-GPUIPLookupWithCopy::GPUIPLookupWithCopy() : _ip_list_len(1), _ip_list_cpu() {};
+GPUIPLookupWithCopy::GPUIPLookupWithCopy() : _ip_list_len(1), _ip_list_cpu(), _capacity(4096), _max_batch(1024), _block(false), _verbose(false), _zc(true), _copyback(false) {};
 // GPUIPLookupWithCopy::GPUIPLookupWithCopy() : _ip_list_len(1), _ip_list_cpu(), _ip_list_gpu() {};
 
 bool GPUIPLookupWithCopy::cp_ip_route(String s, Route *r_store, bool remove_route, Element *context)
@@ -49,10 +49,27 @@ void GPUIPLookupWithCopy::print_route(Route route) {
     printf("Port: %d\n", route.port);
 }
 
-int GPUIPLookupWithCopy::read_from_file() {
+int GPUIPLookupWithCopy::read_from_file(uint8_t table) {
 	click_chatter("reading from file.\n");
+
+    std::string file_name;
+
+    switch(table) {
+        case 0:
+            file_name = "saved_vector.bin";
+            break;
+        case 1:
+            file_name = "saved_vector6000.bin";
+            break;
+        case 2:
+            file_name = "saved_vector.bin";
+            break;
+        default:
+            file_name = "saved_vector.bin";
+            break;
+    }
     
-    std::ifstream fin("saved_vector.bin", std::ios::in | std::ios::binary);
+    std::ifstream fin(file_name, std::ios::in | std::ios::binary);
     std::string line;
     std:getline(fin, line);
     uint32_t size = std::stoul(line);
@@ -92,13 +109,13 @@ int GPUIPLookupWithCopy::read_from_file() {
 
 int GPUIPLookupWithCopy::configure(Vector<String> &conf, ErrorHandler *errh) {
 
-    int ret = 0, r1, eexist = 0;
-    struct Route route;
-
+    _from = 30;
+    _to = 34;
+    
     if (Args(conf, this, errh)
         .bind(conf)
-        .read_mp("FROM", _from)
-        .read_mp("TO", _to)
+        .read_p("FROM", _from)
+        .read_p("TO", _to)
         .read_p("CAPACITY", _capacity)
         .read_p("MAX_BATCH", _max_batch)
         .read_p("BLOCKING", _block)
@@ -106,6 +123,7 @@ int GPUIPLookupWithCopy::configure(Vector<String> &conf, ErrorHandler *errh) {
         .read_p("ZEROCOPY", _zc)
         .read_p("COPYBACK", _copyback)
         .read_p("QUEUES_PER_CORE", _queues_per_core)
+        .read("LOOKUP_TABLE", _lookup_table)
         .consume() < 0) 
     {
         return -1;
@@ -120,9 +138,10 @@ int GPUIPLookupWithCopy::configure(Vector<String> &conf, ErrorHandler *errh) {
         return -1;
     }
 
+
     /* Compute stride */
     if (_to <= _from) {
-        return errh->error("TO should be greather than FROM, but from = %d and to = %d", _to, _from);
+        return errh->error("TO should be greather than FROM, but from = %d and to = %d", _from, _to);
     }
     _stride = _to - _from;
     // if (_stride != 4) {
@@ -144,28 +163,29 @@ int GPUIPLookupWithCopy::configure(Vector<String> &conf, ErrorHandler *errh) {
         _cuda_threads = _max_batch;
     }
 
-    read_from_file();
+    read_from_file(_lookup_table);
 
     _ip_list_len = _ip_vector_cpu.size();
-    uint32_t size =_ip_list_len * sizeof(Route);
 
     return 0;
 }
 
 int GPUIPLookupWithCopy::initialize(ErrorHandler *errh) {
-    _usable_threads = get_pushing_threads();
 
     cudaMalloc(&_ip_list_gpu, _ip_list_len*sizeof(RouteGPU));
     cudaMemcpy(_ip_list_gpu, _ip_vector_cpu.data(), _ip_list_len*sizeof(RouteGPU), cudaMemcpyHostToDevice);
+
+    _usable_threads = get_pushing_threads();
 
     size_t size_per_thread = ((size_t) _stride *  _capacity) << _log_max_batch;
 
     if (_verbose) {
         const char *str = "%p{element} Initialization:\n"
         "* from = %d, to = %d => %d bytes will be read per packet\n"
-        "* a batch is %d maximum packets\n"
-        "* %ld B will be allocated per thread\n";
-        click_chatter(str, this, _from, _to, _stride, _max_batch, size_per_thread);
+        "* a batch contains maximum %d packets\n"
+        "* capacity of each queue is %d\n"
+        "* %ld B will be allocated per queue\n";
+        click_chatter(str, this, _from, _to, _stride, _max_batch, _capacity, size_per_thread);
     }
 
     for (int th_id = 0; th_id < master()->nthreads(); th_id++) {
@@ -208,7 +228,7 @@ int GPUIPLookupWithCopy::initialize(ErrorHandler *errh) {
             queue->events = new cudaEvent_t[_capacity];
             queue->batches = new PacketBatch*[_capacity];
             for (int i = 0; i < _capacity; i++) {
-                cudaEventCreateWithFlags(&queue->events[i], cudaEventDisableTiming);
+                CUDA_CHECK_RET(cudaEventCreateWithFlags(&queue->events[i], cudaEventDisableTiming), errh);
                 queue->batches[i] = nullptr;
             }
         }
@@ -279,7 +299,7 @@ void GPUIPLookupWithCopy::push_batch(int port, PacketBatch *batch) {
     queue->batches[queue->put_index] = batch;
 
     if (_zc) {
-        wrapper_iplookup(h_batch_memory, n, _cuda_blocks, _cuda_threads, queue->cuda_stream, _ip_list_gpu, _ip_list_len);
+        wrapper_iplookup(d_batch_memory, n, _cuda_blocks, _cuda_threads, queue->cuda_stream, _ip_list_gpu, _ip_list_len);
         cudaEventRecord(queue->events[queue->put_index], queue->cuda_stream);
     } else {
         size_t size = loop_ptr - h_batch_memory;
@@ -319,11 +339,22 @@ bool GPUIPLookupWithCopy::run_task(Task *task) {
     char *h_batch_memory = queue->h_memory + ((queue->get_index * _stride) << _log_max_batch);
     char *loop_ptr = h_batch_memory;
     PacketBatch *batch = queue->batches[queue->get_index];
+    FOR_EACH_PACKET_SAFE(batch, p) {
+        WritablePacket *q = p->uniqueify();
+        unsigned char *data = q->data();
+        memcpy(data + _from, loop_ptr, _stride);
+        loop_ptr += _stride;
+        p = q;
+    }
 
-    uint8_t *src;
-    char *data = h_batch_memory;
-    src = (uint8_t *) data;
-    uint32_t *tmp = (uint32_t*) h_batch_memory;
+    // char *h_batch_memory = queue->h_memory + ((queue->get_index * _stride) << _log_max_batch);
+    // char *loop_ptr = h_batch_memory;
+    // PacketBatch *batch = queue->batches[queue->get_index];
+
+    // uint8_t *src;
+    // char *data = h_batch_memory;
+    // src = (uint8_t *) data;
+    // uint32_t *tmp = (uint32_t*) h_batch_memory;
 
     // printf("Before Swap, Source: %02x:%02x:%02x:%02x\n",
     //         src[0], src[1], src[2], src[3]);
@@ -346,11 +377,46 @@ bool GPUIPLookupWithCopy::run_task(Task *task) {
     return true;
 }
 
+void GPUIPLookupWithCopy::run_timer(Timer *timer) {
+    _state->task->reschedule();
+    timer->schedule_now();
+}
+
 #endif
 
+bool GPUIPLookupWithCopy::get_spawning_threads(Bitvector& bmp, bool isoutput, int port) {
+    return true;
+}
+
 void GPUIPLookupWithCopy::cleanup(CleanupStage cs) {
-    cleanup_base(cs);
-    free(_ip_list_cpu);
+    ErrorHandler *errh = ErrorHandler::default_handler();
+
+    for (int i = 0; i < _state.weight(); i++) {
+        if (!_usable_threads[i])
+            continue;
+
+        state &s = _state.get_value(i);
+
+        /* Finish all the tasks polling on the GPU communication list */
+        delete s.task;
+        s.task = nullptr;
+
+        /* Destroy CUDA resources */
+        for (uint8_t queue_id = 0; queue_id < _queues_per_core; queue_id++) {
+            struct queue_state *queue = &s.queues[queue_id];
+
+            cudaStreamDestroy(queue->cuda_stream);
+            cudaFreeHost(&queue->h_memory);
+            if (!_zc) cudaFree(&queue->d_memory);
+            for (int i = 0; i < _capacity; i++) {
+                cudaEventDestroy(queue->events[i]);
+            }
+            delete[] queue->events;
+            delete[] queue->batches;
+        }
+        delete[] s.queues;
+    }
+
     cudaFree(_ip_list_gpu);
 }
 

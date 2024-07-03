@@ -18,15 +18,18 @@ public:
     GPUIPLookupWithCopy() CLICK_COLD;
     const char *class_name() const              { return "GPUIPLookupWithCopy"; }
 
+    bool get_spawning_threads(Bitvector& b, bool isoutput, int port) override;
     int configure(Vector<String> &, ErrorHandler *) override CLICK_COLD;
     int initialize(ErrorHandler *) override CLICK_COLD;
     void cleanup(CleanupStage) override CLICK_COLD;
+
     void push_batch(int, PacketBatch*) override CLICK_COLD;
     bool run_task(Task*) override CLICK_COLD;
+    void run_timer(Timer *);
 
     bool cp_ip_route(String, Route *, bool, Element *);
     void print_route(Route);
-    int read_from_file();
+    int read_from_file(uint8_t table);
 
     uint32_t _ip_list_len;
     Route *_ip_list_cpu;
@@ -44,6 +47,7 @@ public:
     bool _zc;
     bool _copyback;
     uint8_t _queues_per_core;
+    uint8_t _lookup_table;
     int _cuda_threads, _cuda_blocks;
 };
 
