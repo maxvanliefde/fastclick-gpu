@@ -101,8 +101,8 @@ class LinearIPLookup : public IPRouteTable { public:
     int lookup_route(IPAddress, IPAddress&) const;
     void print_route(IPRoute);
     int configure(Vector<String>&, ErrorHandler *);
-    int save_to_file();
-    int read_from_file();
+    int save_to_file(uint64_t);
+    int read_from_file(uint8_t);
 
     
     String dump_routes();
@@ -113,6 +113,8 @@ class LinearIPLookup : public IPRouteTable { public:
 
     Vector<IPRoute> _t;
     int _zero_route;
+
+    uint8_t _lookup_table;
 
     IPAddress _last_addr;
     int _last_entry;

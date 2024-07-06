@@ -14,7 +14,7 @@ __device__ bool matches_prefix(uint32_t addr1, uint32_t addr2, uint32_t mask)
 __device__ uint32_t lookup_entry(uint32_t a, RouteGPU *ip_list, uint32_t len) 
 {
     uint64_t found = 0;
-    for (int i = 0; i < len; i++) {
+    for (int i = 0; i < len - 1; i++) {
         RouteGPU r = ip_list[i];
 	    bool b = matches_prefix(a, r.addr, r.mask);
         if (b) found = i;
@@ -43,9 +43,6 @@ __global__ void kernel_ip_lookup(struct rte_gpu_comm_list *comm_list_item, Route
     if (pkt_id < comm_list_item[0].num_pkts && comm_list_item[0].pkt_list[pkt_id].addr != NULL) {
         eth = (struct rte_ether_hdr *)(((uint8_t *) (comm_list_item[0].pkt_list[pkt_id].addr)));
         ipv4 = (struct rte_ipv4_hdr *)((char *)eth + sizeof(struct rte_ether_hdr));
-
-        // printf("addr: %d\n", ipv4->dst_addr);
-        printf("IP address: %d.%d.%d.%d\n", (ipv4->dst_addr >> (0 * 8)) & 0xFF, (ipv4->dst_addr >> (1 * 8)) & 0xFF, (ipv4->dst_addr >> (2 * 8)) & 0xFF, (ipv4->dst_addr >> (3 * 8)) & 0xFF);
 
         // find the route in the table
         uint32_t port = lookup_route((uint32_t) ipv4->dst_addr, ip_list, len);
@@ -105,8 +102,6 @@ __global__ void kernel_ip_lookup_persistent(struct rte_gpu_comm_list *comm_list,
         if (pkt_id < comm_list[item_id].num_pkts && comm_list[item_id].pkt_list[pkt_id].addr != NULL) {
             eth = (struct rte_ether_hdr *)(((uint8_t *) (comm_list[item_id].pkt_list[pkt_id].addr)));
             ipv4 = (struct rte_ipv4_hdr *)((char *)eth + sizeof(struct rte_ether_hdr));
-
-            printf("addr: %d\n", ipv4->dst_addr);
 
             // find the route in the table
             uint32_t port = lookup_route((uint32_t) ipv4->dst_addr, ip_list, len);

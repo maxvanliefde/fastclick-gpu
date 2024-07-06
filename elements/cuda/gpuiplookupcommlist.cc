@@ -12,45 +12,30 @@
 CLICK_DECLS
 
 
-GPUIPLookup::GPUIPLookup() : _ip_list_len(1), _ip_list_cpu(), _ip_list_gpu(), _capacity(4096), _max_batch(1024), _blocks_per_q(1), _block(false), _verbose(false), _lists_per_core(1), _persistent_kernel(true) {};
+GPUIPLookup::GPUIPLookup() : _ip_list_len(1), _ip_list_cpu(), _ip_list_gpu(), _capacity(4096), _max_batch(1024), _blocks_per_q(1), _block(false), _verbose(false), _lists_per_core(1), _persistent_kernel(true), _lookup_table(0) {};
 
-bool GPUIPLookup::cp_ip_route(String s, Route *r_store, bool remove_route, Element *context)
-{
-    Route r;
-    if (!IPPrefixArg(true).parse(cp_shift_spacevec(s), r.addr, r.mask, context))
-	return false;
-    r.addr &= r.mask;
+int GPUIPLookup::read_from_file(uint8_t table) {
+    std::string file_name;
 
-    String word = cp_shift_spacevec(s);
-    if (word == "-")
-	/* null gateway; do nothing */;
-    else if (IPAddressArg().parse(word, r.gw, context))
-	/* do nothing */;
-    else
-	goto two_words;
-
-    word = cp_shift_spacevec(s);
-  two_words:
-    if (IntArg().parse(word, r.port) || (!word && remove_route))
-	if (!cp_shift_spacevec(s)) { // nothing left
-	    *r_store = r;
-	    return true;
-	}
-
-    return false;
-}
-
-void GPUIPLookup::print_route(Route route) {
-    printf("IP address: %d.%d.%d.%d\n", (route.addr >> (0 * 8)) & 0xFF, (route.addr >> (1 * 8)) & 0xFF, (route.addr >> (2 * 8)) & 0xFF, (route.addr >> (3 * 8)) & 0xFF);
-    printf("Mask: %d.%d.%d.%d\n",       (route.mask >> (0 * 8)) & 0xFF, (route.mask >> (1 * 8)) & 0xFF, (route.mask >> (2 * 8)) & 0xFF, (route.mask >> (3 * 8)) & 0xFF);
-    printf("Gateway: %d.%d.%d.%d\n",    (route.gw >> (0 * 8)) & 0xFF,   (route.gw >> (1 * 8)) & 0xFF,   (route.gw >> (2 * 8)) & 0xFF,   (route.gw >> (3 * 8)) & 0xFF);
-    printf("Port: %d\n", route.port);
-}
-
-int GPUIPLookup::read_from_file() {
-	click_chatter("reading from file.\n");
+    switch(table) {
+        case 0:
+            file_name = "saved_vector100.bin";
+            break;
+        case 1:
+            file_name = "saved_vector1000.bin";
+            break;
+        case 2:
+            file_name = "saved_vector10000.bin";
+            break;
+        case 3:
+            file_name = "saved_vector50000.bin";
+            break;
+        default:
+            file_name = "saved_vector100.bin";
+            break;
+    }
     
-    std::ifstream fin("/etinfo/users/2021/rvanhauwaert/fastclick-gpu/saved_vector6000.bin", std::ios::in | std::ios::binary);
+    std::ifstream fin(file_name, std::ios::in | std::ios::binary);
     std::string line;
     std:getline(fin, line);
     uint32_t size = std::stoul(line);
@@ -96,20 +81,17 @@ int GPUIPLookup::configure(Vector<String> &conf, ErrorHandler *errh) {
         .read("VERBOSE", _verbose)
         .read("LISTS_PER_CORE", _lists_per_core)
         .read_p("PERSISTENT_KERNEL", _persistent_kernel)
+        .read("LOOKUP_TABLE", _lookup_table)
         .consume() < 0)
     {
         return -1;
     }
 
-    // printf("cap: %d\n", _capacity);
-    // printf("lpc: %d\n", _lists_per_core);
-
-    read_from_file();
+    read_from_file(_lookup_table);
     
     _ip_list_len = _ip_vector_cpu.size();
     uint32_t size =_ip_list_len * sizeof(Route);
 
-    printf("done\n");
     return ret;
 }
 
@@ -294,7 +276,7 @@ void GPUIPLookup::run_timer(Timer *timer) {
 #endif
 
 void GPUIPLookup::cleanup(CleanupStage cs) {
-    cleanup_base(cs);
+    // cleanup_base(cs);
     free(_ip_list_cpu);
     cudaFree(_ip_list_gpu);
 

@@ -29,7 +29,7 @@ public:
 
     bool cp_ip_route(String, Route *, bool, Element *);
     void print_route(Route);
-    int read_from_file(uint8_t table);
+    int read_from_file(uint8_t);
 
     uint32_t _ip_list_len;
     Route *_ip_list_cpu;

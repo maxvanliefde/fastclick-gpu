@@ -12,60 +12,26 @@
 
 CLICK_DECLS
 
-GPUIPLookupWithCopy::GPUIPLookupWithCopy() : _ip_list_len(1), _ip_list_cpu(), _capacity(4096), _max_batch(1024), _block(false), _verbose(false), _zc(true), _copyback(false) {};
-// GPUIPLookupWithCopy::GPUIPLookupWithCopy() : _ip_list_len(1), _ip_list_cpu(), _ip_list_gpu() {};
-
-bool GPUIPLookupWithCopy::cp_ip_route(String s, Route *r_store, bool remove_route, Element *context)
-{
-    Route r;
-    if (!IPPrefixArg(true).parse(cp_shift_spacevec(s), r.addr, r.mask, context))
-	return false;
-    r.addr &= r.mask;
-
-
-    String word = cp_shift_spacevec(s);
-    if (word == "-")
-	/* null gateway; do nothing */;
-    else if (IPAddressArg().parse(word, r.gw, context))
-	/* do nothing */;
-    else
-	goto two_words;
-
-    word = cp_shift_spacevec(s);
-  two_words:
-    if (IntArg().parse(word, r.port) || (!word && remove_route))
-	if (!cp_shift_spacevec(s)) { // nothing left
-	    *r_store = r;
-	    return true;
-	}
-
-    return false;
-}
-
-void GPUIPLookupWithCopy::print_route(Route route) {
-    printf("IP address: %d.%d.%d.%d\n", (route.addr >> (0 * 8)) & 0xFF, (route.addr >> (1 * 8)) & 0xFF, (route.addr >> (2 * 8)) & 0xFF, (route.addr >> (3 * 8)) & 0xFF);
-    printf("Mask: %d.%d.%d.%d\n",       (route.mask >> (0 * 8)) & 0xFF, (route.mask >> (1 * 8)) & 0xFF, (route.mask >> (2 * 8)) & 0xFF, (route.mask >> (3 * 8)) & 0xFF);
-    printf("Gateway: %d.%d.%d.%d\n",    (route.gw >> (0 * 8)) & 0xFF,   (route.gw >> (1 * 8)) & 0xFF,   (route.gw >> (2 * 8)) & 0xFF,   (route.gw >> (3 * 8)) & 0xFF);
-    printf("Port: %d\n", route.port);
-}
+GPUIPLookupWithCopy::GPUIPLookupWithCopy() : _ip_list_len(1), _ip_list_cpu(), _capacity(4096), _max_batch(1024), _block(false), _verbose(false), _zc(true), _copyback(false), _lookup_table(0) {};
 
 int GPUIPLookupWithCopy::read_from_file(uint8_t table) {
-	click_chatter("reading from file.\n");
-
     std::string file_name;
 
     switch(table) {
         case 0:
-            file_name = "saved_vector.bin";
+            file_name = "saved_vector100.bin";
             break;
         case 1:
-            file_name = "saved_vector6000.bin";
+            file_name = "saved_vector1000.bin";
             break;
         case 2:
-            file_name = "saved_vector.bin";
+            file_name = "saved_vector10000.bin";
+            break;
+        case 3:
+            file_name = "saved_vector50000.bin";
             break;
         default:
-            file_name = "saved_vector.bin";
+            file_name = "saved_vector100.bin";
             break;
     }
     
@@ -73,10 +39,10 @@ int GPUIPLookupWithCopy::read_from_file(uint8_t table) {
     std::string line;
     std:getline(fin, line);
     uint32_t size = std::stoul(line);
-    printf("size: %u\n", size);
-    printf("_ip_vector_cpu.size: %d\n", _ip_vector_cpu.size());
+    // printf("size: %u\n", size);
+    // printf("_ip_vector_cpu.size: %d\n", _ip_vector_cpu.size());
     _ip_vector_cpu.resize(size);
-    printf("_ip_vector_cpu.size: %d\n", _ip_vector_cpu.size());
+    // printf("_ip_vector_cpu.size: %d\n", _ip_vector_cpu.size());
     for(int i = 0; i < size; i++) {
         std::getline(fin, line);
         uint32_t addr = std::stoul(line);
@@ -97,9 +63,6 @@ int GPUIPLookupWithCopy::read_from_file(uint8_t table) {
         std::getline(fin, line);
         uint32_t extra = std::stoul(line);
         _ip_vector_cpu[i].extra = extra;
-
-        // print_route(_ip_vector_cpu[i]);
-
     }
     fin.close();
 
@@ -144,9 +107,9 @@ int GPUIPLookupWithCopy::configure(Vector<String> &conf, ErrorHandler *errh) {
         return errh->error("TO should be greather than FROM, but from = %d and to = %d", _from, _to);
     }
     _stride = _to - _from;
-    // if (_stride != 4) {
-    //     return errh->error("TO - FROM should be 4, but from = %d and to = %d", _to, _from);
-    // }
+    if (_stride != 4) {
+        return errh->error("TO - FROM should be 4, but from = %d and to = %d", _to, _from);
+    }
 
     /* Check if power of two and compute logarithm */
     uint32_t n = _max_batch;
@@ -339,36 +302,11 @@ bool GPUIPLookupWithCopy::run_task(Task *task) {
     char *h_batch_memory = queue->h_memory + ((queue->get_index * _stride) << _log_max_batch);
     char *loop_ptr = h_batch_memory;
     PacketBatch *batch = queue->batches[queue->get_index];
-    FOR_EACH_PACKET_SAFE(batch, p) {
-        WritablePacket *q = p->uniqueify();
-        unsigned char *data = q->data();
-        memcpy(data + _from, loop_ptr, _stride);
-        loop_ptr += _stride;
-        p = q;
-    }
 
-    // char *h_batch_memory = queue->h_memory + ((queue->get_index * _stride) << _log_max_batch);
-    // char *loop_ptr = h_batch_memory;
-    // PacketBatch *batch = queue->batches[queue->get_index];
-
-    // uint8_t *src;
-    // char *data = h_batch_memory;
-    // src = (uint8_t *) data;
-    // uint32_t *tmp = (uint32_t*) h_batch_memory;
-
-    // printf("Before Swap, Source: %02x:%02x:%02x:%02x\n",
-    //         src[0], src[1], src[2], src[3]);
-
+    /* Print the result */
     // FOR_EACH_PACKET_SAFE(batch, p) {
-        // WritablePacket *q = p->uniqueify();
-        // unsigned char *data = q->data();
-        // memcpy(data + _from, loop_ptr, _stride);
-
-        // uint32_t temp = *tmp;
-        //printf("port: %d\n", temp);
-        // tmp++;
-        // loop_ptr += _stride;
-        // p = q;
+    //     printf("port: %d\n", loop_ptr[0]);
+    //     loop_ptr += _stride;
     // }
 
     output_push_batch(0, batch);
