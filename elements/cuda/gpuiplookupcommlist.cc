@@ -19,19 +19,19 @@ int GPUIPLookup::read_from_file(uint8_t table) {
 
     switch(table) {
         case 0:
-            file_name = "saved_vector100.bin";
+            file_name = "../saved_vector100.bin";
             break;
         case 1:
-            file_name = "saved_vector1000.bin";
+            file_name = "../saved_vector1000.bin";
             break;
         case 2:
-            file_name = "saved_vector10000.bin";
+            file_name = "../saved_vector10000.bin";
             break;
         case 3:
-            file_name = "saved_vector50000.bin";
+            file_name = "../saved_vector50000.bin";
             break;
         default:
-            file_name = "saved_vector100.bin";
+            file_name = "../saved_vector100.bin";
             break;
     }
     
