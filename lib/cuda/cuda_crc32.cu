@@ -15,6 +15,8 @@ using namespace cooperative_groups;
 __global__ void kernel_setcrc32_commlist(struct rte_gpu_comm_list *comm_list_item, uint32_t *crc_table) {
     int pkt_id = threadIdx.x;
 
+    struct rte_ether_hdr *eth;
+    uint8_t *src, *dst, tmp[6];
     size_t size;
 
 
@@ -31,6 +33,16 @@ __global__ void kernel_setcrc32_commlist(struct rte_gpu_comm_list *comm_list_ite
         }
 
         memcpy((void *) (comm_list_item->pkt_list[pkt_id].addr + size), &crc_accum, RTE_ETHER_CRC_LEN);
+
+        /* EtherMirror */
+        eth = (struct rte_ether_hdr *)(((uint8_t *) (comm_list_item[0].pkt_list[pkt_id].addr)));
+        src = (uint8_t *) (&eth->src_addr);
+        dst = (uint8_t *) (&eth->dst_addr);
+
+        uint8_t k;
+        for (k = 0; k < 6; k++) tmp[k] = src[k];
+        for (k = 0; k < 6; k++) src[k] = dst[k];
+        for (k = 0; k < 6; k++) dst[k] = tmp[k];
     }
 
     /* Finish batch */
@@ -51,7 +63,9 @@ void wrapper_setcrc32_commlist(struct rte_gpu_comm_list *comm_list_item, uint32_
 __global__ void kernel_setcrc32_persistent(struct rte_gpu_comm_list *comm_list, uint32_t comm_list_size, uint32_t *crc_table) {
     int pkt_id = threadIdx.x;
     uint32_t item_id = blockIdx.x;
-
+    
+    struct rte_ether_hdr *eth;
+    uint8_t *src, *dst, tmp[6];
     size_t size;
 
     /* Used for synchronization */
@@ -90,6 +104,16 @@ __global__ void kernel_setcrc32_persistent(struct rte_gpu_comm_list *comm_list, 
             }
 
             memcpy((void *) (comm_list[item_id].pkt_list[pkt_id].addr + size), &crc_accum, RTE_ETHER_CRC_LEN);
+
+            /* EtherMirror */
+            eth = (struct rte_ether_hdr *)(((uint8_t *) (comm_list[item_id].pkt_list[pkt_id].addr)));
+            src = (uint8_t *) (&eth->src_addr);
+            dst = (uint8_t *) (&eth->dst_addr);
+
+            uint8_t k;
+            for (k = 0; k < 6; k++) tmp[k] = src[k];
+            for (k = 0; k < 6; k++) src[k] = dst[k];
+            for (k = 0; k < 6; k++) dst[k] = tmp[k];
         }
 
         /* Finish batch */

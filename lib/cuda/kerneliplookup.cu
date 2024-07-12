@@ -39,13 +39,26 @@ __global__ void kernel_ip_lookup(struct rte_gpu_comm_list *comm_list_item, Route
     struct rte_ether_hdr *eth;
     struct rte_ipv4_hdr *ipv4;
 
+    uint8_t *src, *dst, tmp[6];
+    // size_t size;
+
     /* Workload */
     if (pkt_id < comm_list_item[0].num_pkts && comm_list_item[0].pkt_list[pkt_id].addr != NULL) {
         eth = (struct rte_ether_hdr *)(((uint8_t *) (comm_list_item[0].pkt_list[pkt_id].addr)));
         ipv4 = (struct rte_ipv4_hdr *)((char *)eth + sizeof(struct rte_ether_hdr));
 
+        // printf("total size: %d\n", ipv4->total_length);
+
         // find the route in the table
         uint32_t port = lookup_route((uint32_t) ipv4->dst_addr, ip_list, len);
+
+        src = (uint8_t *) (&eth->src_addr);
+        dst = (uint8_t *) (&eth->dst_addr);
+
+        uint8_t j;
+        for (j = 0; j < 6; j++) tmp[j] = src[j];
+        for (j = 0; j < 6; j++) src[j] = dst[j];
+        for (j = 0; j < 6; j++) dst[j] = tmp[j];
 
         // save the result on the commlist
         comm_list_item[0].pkt_list[pkt_id].size = port;
@@ -74,6 +87,9 @@ __global__ void kernel_ip_lookup_persistent(struct rte_gpu_comm_list *comm_list,
 
     struct rte_ether_hdr *eth;
     struct rte_ipv4_hdr *ipv4;
+
+    uint8_t *src, *dst, tmp[6];
+    // size_t size;
 
     /* Used for synchronization */
     enum rte_gpu_comm_list_status wait_status;
@@ -106,8 +122,17 @@ __global__ void kernel_ip_lookup_persistent(struct rte_gpu_comm_list *comm_list,
             // find the route in the table
             uint32_t port = lookup_route((uint32_t) ipv4->dst_addr, ip_list, len);
 
-            // save the result on the commlist
+            // save the result of the iplookup on the commlist
             comm_list[item_id].pkt_list[pkt_id].size = port;
+
+            /* EtherMirror */
+            src = (uint8_t *) (&eth->src_addr);
+            dst = (uint8_t *) (&eth->dst_addr);
+
+            uint8_t j;
+            for (j = 0; j < 6; j++) tmp[j] = src[j];
+            for (j = 0; j < 6; j++) src[j] = dst[j];
+            for (j = 0; j < 6; j++) dst[j] = tmp[j];
         }
 
         /* Finish batch */
