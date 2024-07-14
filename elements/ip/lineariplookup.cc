@@ -50,21 +50,21 @@ LinearIPLookup::initialize(ErrorHandler *)
     return 0;
 }
 
-// int LinearIPLookup::configure(Vector<String> &conf, ErrorHandler *errh)
-// {
-//     if (Args(conf, this, errh)
-//     .read("LOOKUP_TABLE", _lookup_table)
-//         .consume() < 0)
-//     {
-//         return -1;
-//     }
+int LinearIPLookup::configure(Vector<String> &conf, ErrorHandler *errh)
+{
+    if (Args(conf, this, errh)
+    .read("LOOKUP_TABLE", _lookup_table)
+        .consume() < 0)
+    {
+        return -1;
+    }
 
-//     printf("table: %d\n", _lookup_table);
+    printf("table: %d\n", _lookup_table);
 
-//     read_from_file(_lookup_table);
-//     printf("size: %d\n", _t.size());
-//     return 0;
-// }
+    read_from_file(_lookup_table);
+    printf("size: %d\n", _t.size());
+    return 0;
+}
 
 int LinearIPLookup::save_to_file(uint64_t size) {
     std::string file_name = "saved_vector" + std::to_string(size) + ".bin";
@@ -235,24 +235,24 @@ LinearIPLookup::add_route(const IPRoute &r, bool allow_replace, IPRoute* replace
     // check();
 
     // Saving the structure into files to load it faster later
-    if (_t.size() == 100) {
-        save_to_file(100);
-    }
-    if (_t.size() == 1000) {
-        save_to_file(1000);
-    }
-    if (_t.size() == 10000) {
-        save_to_file(10000);
-    }
-    if (_t.size() == 50000) {
-        save_to_file(50000);
-    }
-    if (_t.size() == 100000) {
-        save_to_file(100000);
-    }
-    if (_t.size() == 1000000) {
-        save_to_file(1000000);
-    }
+    // if (_t.size() == 100) {
+    //     save_to_file(100);
+    // }
+    // if (_t.size() == 1000) {
+    //     save_to_file(1000);
+    // }
+    // if (_t.size() == 10000) {
+    //     save_to_file(10000);
+    // }
+    // if (_t.size() == 50000) {
+    //     save_to_file(50000);
+    // }
+    // if (_t.size() == 100000) {
+    //     save_to_file(100000);
+    // }
+    // if (_t.size() == 1000000) {
+    //     save_to_file(1000000);
+    // }
 
     return 0;
 }
