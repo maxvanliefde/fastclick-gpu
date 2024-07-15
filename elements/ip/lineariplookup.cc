@@ -98,6 +98,12 @@ int LinearIPLookup::read_from_file(uint8_t table) {
         case 3:
             file_name = "../saved_vector50000.bin";
             break;
+        case 4:
+            file_name = "../saved_vector100000.bin";
+            break;
+        case 5:
+            file_name = "../saved_vector1000000.bin";
+            break;
         default:
             file_name = "../saved_vector100.bin";
             break;
