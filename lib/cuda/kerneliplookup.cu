@@ -15,9 +15,9 @@ __device__ bool mask_as_specific(uint32_t mask, uint32_t addr) {
     return (addr & mask) == mask;
 }
 
-__device__ uint32_t lookup_entry(uint32_t a, RouteGPU *ip_list, uint32_t len) 
+__device__ int lookup_entry(uint32_t a, RouteGPU *ip_list, uint32_t len) 
 {
-    uint64_t found = -1;
+    int found = -1;
     for (int i = 0; i < len - 1; i++) {
         RouteGPU r = ip_list[i];
 	    bool b = matches_prefix(a, r.addr, r.mask);

@@ -14,9 +14,9 @@ __device__ bool mask_as_specific_coal(uint32_t mask, uint32_t addr) {
     return (addr & mask) == mask;
 }
 
-__device__ uint32_t lookup_entry_coal(uint32_t a, RouteGPU *ip_list, uint32_t len) 
+__device__ int lookup_entry_coal(uint32_t a, RouteGPU *ip_list, uint32_t len) 
 {
-    uint64_t found = -1;
+    int found = -1;
     for (int i = 0; i < len - 1; i++) {
         RouteGPU r = ip_list[i];
 	    bool b = matches_prefix_coal(a, r.addr, r.mask);
@@ -43,7 +43,7 @@ __device__ uint32_t lookup_route_coal(uint32_t a, RouteGPU *ip_list, uint32_t le
 	// return ip_list[ei].port;
 	return ei;
     } else
-	return -1;
+	return 0;
 }
 
 __global__ void kernel_iplookup(char *batch_memory, uint32_t n_pkts, RouteGPU *ip_list, uint32_t len) {    
