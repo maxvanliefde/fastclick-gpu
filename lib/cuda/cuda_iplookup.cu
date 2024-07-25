@@ -10,15 +10,26 @@ __device__ bool matches_prefix_coal(uint32_t addr1, uint32_t addr2, uint32_t mas
     return ((addr1 ^ addr2) & mask) == 0;
 }
 
+__device__ bool mask_as_specific_coal(uint32_t mask, uint32_t addr) {
+    return (addr & mask) == mask;
+}
+
 __device__ uint32_t lookup_entry_coal(uint32_t a, RouteGPU *ip_list, uint32_t len) 
 {
-    uint64_t found = 0;
+    uint64_t found = -1;
     for (int i = 0; i < len - 1; i++) {
         RouteGPU r = ip_list[i];
-        bool b = matches_prefix_coal(a, r.addr, r.mask);
-        if (b) found = i;
-        
+	    bool b = matches_prefix_coal(a, r.addr, r.mask);
+        if (b) {
+            found = i;
+            for (int j = r.extra; j < len - 1; j++) {
+                RouteGPU s = ip_list[j];
+                bool c = (matches_prefix_coal(a, s.addr, s.mask) && mask_as_specific_coal(r.mask, s.mask));
+                if (c) found = j;
+            }
         }
+
+	}
     return found;
 }
 
