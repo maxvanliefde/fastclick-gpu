@@ -321,4 +321,4 @@ void GPUIPLookup::cleanup(CleanupStage cs) {
 
 ELEMENT_REQUIRES(batch cuda)
 CLICK_ENDDECLS
-EXPORT_ELEMENT(GPUIPLookupCommList)
+EXPORT_ELEMENT(GPUIPLookup)

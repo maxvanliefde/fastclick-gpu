@@ -366,4 +366,4 @@ void GPUIPLookupWithCopy::cleanup(CleanupStage cs) {
 
 ELEMENT_REQUIRES(batch cuda)
 CLICK_ENDDECLS
-EXPORT_ELEMENT(GPUIPLookupCoalescent)
+EXPORT_ELEMENT(GPUIPLookupWithCopy)
