@@ -1,3 +1,18 @@
+FastClick-GPU
+=========
+This repository is part of Romain Van Hauwaert & Maxime Vanliefde Master's thesis:
+
+> Van Hauwaert, Romain ; Vanliefde, Maxime. GPU-based Packet Processing. Ecole polytechnique de Louvain, Université catholique de Louvain, 2024. Prom. : Barbette, Tom. http://hdl.handle.net/2078.1/thesis:45872
+
+It extends FastClick by adding GPU-enabled elements.
+To make it work, you need to have CUDA installed to your sytem.
+You can then use the `--enable-cuda` option at compilation time.
+Beware to also enable `--enable-dpdk-packet`, so that the "Packet" class is a wrapper to a DPDK mbuf.
+
+GPU elements are located under `elements/cuda`. The CUDA kernel are under `lib/cuda` (CUDA code) and `include/click/cuda` (header files). Examples of pipelines using these elements are under `conf/cuda`.
+
+
+
 [FastClick](https://www.fastclick.dev) ![CI](https://github.com/tbarbette/fastclick/workflows/C/C++%20CI/badge.svg)
 =========
 FastClick is an extended version of the Click Modular Router featuring an
